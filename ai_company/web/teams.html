@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Masai Founder OS Teams</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="top-nav">
+        <a class="brand" href="/">Masai Founder OS</a>
+        <div class="nav-links">
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link active" href="/teams">Teams</a>
+          <a class="nav-link" href="/workflow">Workflow</a>
+          <a class="nav-link nav-link-cta" href="/dashboard">Open Dashboard</a>
+        </div>
+      </nav>
+
+      <header class="page-header panel">
+        <div>
+          <p class="eyebrow">Departments</p>
+          <h1>Understand what each Masai AI team owns.</h1>
+          <p class="hero-text">
+            This page keeps the department model readable. Each team has its own
+            responsibility area, capacity, queue, and current workload.
+          </p>
+        </div>
+      </header>
+
+      <main class="content-stack">
+        <section class="panel page-section">
+          <div class="section-heading">
+            <p class="panel-label">Live Department Load</p>
+            <h2>Current capacity and queue pressure</h2>
+          </div>
+          <div id="department-grid" class="department-grid"></div>
+        </section>
+
+        <section class="panel page-section">
+          <div class="section-heading">
+            <p class="panel-label">Operating Model</p>
+            <h2>Who does what</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card">
+              <h3>Sales</h3>
+              <p>Owns lead follow-up, counseling, admissions, conversion, and outreach quality.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Ops</h3>
+              <p>Owns cohort onboarding, class coordination, escalation handling, and process execution.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Curriculum</h3>
+              <p>Owns learning design, assessment quality, content improvements, and student learning outcomes.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Accounts</h3>
+              <p>Owns fees, refunds, invoices, collections, reconciliation, and finance communication.</p>
+            </article>
+            <article class="feature-card">
+              <h3>Tech</h3>
+              <p>Owns platform issues, dashboards, product changes, engineering tasks, and internal tooling.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel page-section">
+          <div class="section-heading">
+            <p class="panel-label">Database Records</p>
+            <h2>Actual company data by function</h2>
+          </div>
+          <div class="record-grid">
+            <div class="record-panel">
+              <h3 class="subheading">Leads</h3>
+              <div id="records-leads" class="record-list"></div>
+            </div>
+            <div class="record-panel">
+              <h3 class="subheading">Students</h3>
+              <div id="records-students" class="record-list"></div>
+            </div>
+            <div class="record-panel">
+              <h3 class="subheading">Payments</h3>
+              <div id="records-payments" class="record-list"></div>
+            </div>
+            <div class="record-panel">
+              <h3 class="subheading">Curriculum Modules</h3>
+              <div id="records-modules" class="record-list"></div>
+            </div>
+            <div class="record-panel">
+              <h3 class="subheading">Tech Incidents</h3>
+              <div id="records-incidents" class="record-list"></div>
+            </div>
+            <div class="record-panel">
+              <h3 class="subheading">Cohorts</h3>
+              <div id="records-cohorts" class="record-list"></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/vercel-config.js"></script>
+    <script src="/assets/overview.js"></script>
+  </body>
+</html>

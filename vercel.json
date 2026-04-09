@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "ai_company/web",
+  "cleanUrls": false,
+  "rewrites": [
+    {
+      "source": "/teams",
+      "destination": "/teams.html"
+    },
+    {
+      "source": "/workflow",
+      "destination": "/workflow.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/dashboard.html"
+    },
+    {
+      "source": "/assets/:path*",
+      "destination": "/:path*"
+    }
+  ]
+}

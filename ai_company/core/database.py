@@ -1,0 +1,592 @@
+"""SQLite persistence layer for Masai Founder OS."""
+
+from __future__ import annotations
+
+import sqlite3
+from datetime import datetime, timedelta
+from pathlib import Path
+from threading import Lock
+from typing import Any, Dict, List, Optional
+
+try:
+    from ai_company.config import DATABASE_PATH
+except ImportError:
+    from config import DATABASE_PATH
+
+
+def utc_now() -> str:
+    """Return the current UTC timestamp."""
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+class Database:
+    """Simple SQLite wrapper for company records and task history."""
+
+    def __init__(self, path: Optional[str] = None) -> None:
+        self.path = Path(path or DATABASE_PATH)
+        self._lock = Lock()
+        self._conn = sqlite3.connect(self.path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
+
+    def _execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
+        with self._lock:
+            cursor = self._conn.execute(query, params)
+            self._conn.commit()
+            return cursor
+
+    def _executemany(self, query: str, rows: List[tuple]) -> None:
+        with self._lock:
+            self._conn.executemany(query, rows)
+            self._conn.commit()
+
+    def _fetchall(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
+        with self._lock:
+            cursor = self._conn.execute(query, params)
+            rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def _fetchone(self, query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            cursor = self._conn.execute(query, params)
+            row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def init_schema(self) -> None:
+        """Create all required tables if they do not exist."""
+        schema = """
+        CREATE TABLE IF NOT EXISTS leads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            program TEXT NOT NULL,
+            source TEXT NOT NULL,
+            city TEXT NOT NULL,
+            status TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            last_contacted_at TEXT,
+            notes TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS cohorts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL,
+            program TEXT NOT NULL,
+            city TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            status TEXT NOT NULL,
+            capacity INTEGER NOT NULL,
+            enrolled_count INTEGER NOT NULL,
+            readiness_pct INTEGER NOT NULL,
+            notes TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            program TEXT NOT NULL,
+            cohort_code TEXT NOT NULL,
+            city TEXT NOT NULL,
+            status TEXT NOT NULL,
+            attendance_pct INTEGER NOT NULL,
+            fees_due INTEGER NOT NULL,
+            risk_level TEXT NOT NULL,
+            notes TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_email TEXT NOT NULL,
+            amount_due INTEGER NOT NULL,
+            amount_paid INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            due_date TEXT NOT NULL,
+            last_action_at TEXT,
+            notes TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS curriculum_modules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            program TEXT NOT NULL,
+            quality_score INTEGER NOT NULL,
+            completion_pct INTEGER NOT NULL,
+            review_status TEXT NOT NULL,
+            last_reviewed_at TEXT,
+            notes TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS tech_incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            product_area TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            status TEXT NOT NULL,
+            owner TEXT NOT NULL,
+            impacted_users INTEGER NOT NULL,
+            opened_at TEXT NOT NULL,
+            last_update_at TEXT NOT NULL,
+            notes TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY,
+            sequence INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            request TEXT NOT NULL,
+            priority TEXT NOT NULL,
+            status TEXT NOT NULL,
+            department TEXT,
+            department_label TEXT,
+            ceo_reason TEXT,
+            result TEXT,
+            error TEXT,
+            assignee TEXT,
+            queue_position INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            cycle_seconds REAL DEFAULT 0,
+            data_effect TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS task_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            message TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS memory_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task TEXT NOT NULL,
+            response TEXT NOT NULL,
+            department TEXT,
+            route_reason TEXT,
+            timestamp TEXT NOT NULL
+        );
+        """
+        with self._lock:
+            self._conn.executescript(schema)
+            self._conn.commit()
+
+    def seed_if_empty(self) -> None:
+        """Seed realistic company data once."""
+        existing = self._fetchone("SELECT COUNT(*) AS count FROM leads")
+        if existing and existing["count"] > 0:
+            return
+
+        now = datetime.utcnow()
+        lead_rows = [
+            ("Aarav Shah", "aarav@sample.com", "Full Stack Web Development", "Weekend Webinar", "Bangalore", "new", "AI SDR 1", 82, None, "Asked about ISA and placement outcomes."),
+            ("Diya Menon", "diya@sample.com", "Data Analytics", "Organic", "Mumbai", "counseled", "AI SDR 2", 74, utc_now(), "Interested in weekend-friendly learning schedule."),
+            ("Rohan Gupta", "rohan@sample.com", "Backend Development", "Referral", "Delhi", "follow_up_due", "AI SDR 1", 68, (now - timedelta(days=2)).isoformat(timespec="seconds") + "Z", "Needs clarity on financing options."),
+            ("Sneha Iyer", "sneha@sample.com", "Product Design", "Campus Event", "Chennai", "application_started", "AI SDR 3", 88, (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "High intent lead, paused after counselor call."),
+            ("Kabir Jain", "kabir@sample.com", "Full Stack Web Development", "Weekend Webinar", "Bangalore", "new", "AI SDR 2", 79, None, "Looking for cohort starting this month."),
+        ]
+        self._executemany(
+            """
+            INSERT INTO leads (name, email, program, source, city, status, owner, score, last_contacted_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            lead_rows,
+        )
+
+        cohort_rows = [
+            ("FSW-BLR-APR", "Full Stack Web Development", "Bangalore", "2026-04-22", "preparing", 120, 93, 71, "Mentor allocation pending."),
+            ("DA-MUM-APR", "Data Analytics", "Mumbai", "2026-04-28", "preparing", 90, 66, 64, "Assessment proctoring checklist incomplete."),
+            ("BE-DEL-MAY", "Backend Development", "Delhi", "2026-05-05", "open_for_enrollment", 80, 34, 42, "Marketing requested stronger city outreach."),
+        ]
+        self._executemany(
+            """
+            INSERT INTO cohorts (code, program, city, start_date, status, capacity, enrolled_count, readiness_pct, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            cohort_rows,
+        )
+
+        student_rows = [
+            ("Nikita Rao", "nikita@masai.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 88, 0, "low", "Strong assignment completion."),
+            ("Karan Patel", "karan@masai.com", "Data Analytics", "DA-MUM-APR", "Mumbai", "active", 76, 15000, "medium", "Delayed second installment."),
+            ("Meera Nair", "meera@masai.com", "Backend Development", "BE-DEL-MAY", "Delhi", "onboarding", 0, 30000, "medium", "Requested flexible payment structure."),
+            ("Rahul S", "rahul@masai.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 62, 25000, "high", "Attendance dropped after sprint 2."),
+            ("Ananya Das", "ananya@masai.com", "Product Design", "PD-BLR-MAY", "Bangalore", "refund_requested", 0, 45000, "high", "Requested refund after deferral."),
+        ]
+        self._executemany(
+            """
+            INSERT INTO students (name, email, program, cohort_code, city, status, attendance_pct, fees_due, risk_level, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            student_rows,
+        )
+
+        payment_rows = [
+            ("nikita@masai.com", 0, 120000, "paid", "2026-04-10", utc_now(), "All installments cleared."),
+            ("karan@masai.com", 15000, 105000, "overdue", "2026-04-06", (now - timedelta(days=3)).isoformat(timespec="seconds") + "Z", "Reminder sent once."),
+            ("meera@masai.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement."),
+            ("rahul@masai.com", 25000, 95000, "overdue", "2026-04-03", (now - timedelta(days=4)).isoformat(timespec="seconds") + "Z", "Needs escalation."),
+            ("ananya@masai.com", 45000, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review."),
+        ]
+        self._executemany(
+            """
+            INSERT INTO payments (student_email, amount_due, amount_paid, status, due_date, last_action_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            payment_rows,
+        )
+
+        module_rows = [
+            ("JavaScript Foundations", "Full Stack Web Development", 71, 82, "stable", (now - timedelta(days=14)).isoformat(timespec="seconds") + "Z", "Cohort feedback mentions pacing issues."),
+            ("SQL for Analytics", "Data Analytics", 78, 88, "stable", (now - timedelta(days=10)).isoformat(timespec="seconds") + "Z", "Needs more case studies."),
+            ("Backend APIs", "Backend Development", 69, 73, "review_needed", (now - timedelta(days=20)).isoformat(timespec="seconds") + "Z", "Assessments too difficult for current cohort."),
+            ("System Design Basics", "Backend Development", 74, 61, "stable", (now - timedelta(days=8)).isoformat(timespec="seconds") + "Z", "Drop in assessment accuracy last week."),
+        ]
+        self._executemany(
+            """
+            INSERT INTO curriculum_modules (name, program, quality_score, completion_pct, review_status, last_reviewed_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            module_rows,
+        )
+
+        incident_rows = [
+            ("Student dashboard loading slowly during assignment submissions", "Student Dashboard", "high", "open", "AI Tech Lead", 420, (now - timedelta(hours=8)).isoformat(timespec="seconds") + "Z", utc_now(), "Spike observed after assignment upload release."),
+            ("Mentor session attendance sync lag", "Ops Integrations", "medium", "monitoring", "AI Tech Lead", 130, (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", utc_now(), "Webhook delay reduced but not eliminated."),
+            ("Payment receipt email not triggered for some learners", "Finance Automation", "medium", "open", "AI Tech Lead", 45, (now - timedelta(hours=5)).isoformat(timespec="seconds") + "Z", utc_now(), "Accounts requested manual audit."),
+        ]
+        self._executemany(
+            """
+            INSERT INTO tech_incidents (title, product_area, severity, status, owner, impacted_users, opened_at, last_update_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            incident_rows,
+        )
+
+    def save_task(self, task: Dict[str, Any]) -> None:
+        """Insert or update one task."""
+        self._execute(
+            """
+            INSERT INTO tasks (
+                id, sequence, title, request, priority, status, department, department_label,
+                ceo_reason, result, error, assignee, queue_position, created_at, updated_at,
+                started_at, completed_at, cycle_seconds, data_effect
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                sequence=excluded.sequence,
+                title=excluded.title,
+                request=excluded.request,
+                priority=excluded.priority,
+                status=excluded.status,
+                department=excluded.department,
+                department_label=excluded.department_label,
+                ceo_reason=excluded.ceo_reason,
+                result=excluded.result,
+                error=excluded.error,
+                assignee=excluded.assignee,
+                queue_position=excluded.queue_position,
+                created_at=excluded.created_at,
+                updated_at=excluded.updated_at,
+                started_at=excluded.started_at,
+                completed_at=excluded.completed_at,
+                cycle_seconds=excluded.cycle_seconds,
+                data_effect=excluded.data_effect
+            """,
+            (
+                task["id"],
+                task["sequence"],
+                task["title"],
+                task["request"],
+                task["priority"],
+                task["status"],
+                task["department"],
+                task["department_label"],
+                task["ceo_reason"],
+                task["result"],
+                task["error"],
+                task["assignee"],
+                task["queue_position"],
+                task["created_at"],
+                task["updated_at"],
+                task["started_at"],
+                task["completed_at"],
+                task["cycle_seconds"],
+                task.get("data_effect", ""),
+            ),
+        )
+
+    def save_task_event(self, task_id: str, event: Dict[str, Any]) -> None:
+        """Persist one task event."""
+        self._execute(
+            """
+            INSERT INTO task_events (task_id, timestamp, actor, stage, message)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (task_id, event["timestamp"], event["actor"], event["stage"], event["message"]),
+        )
+
+    def save_memory_entry(self, entry: Dict[str, Any]) -> None:
+        """Persist a memory record."""
+        self._execute(
+            """
+            INSERT INTO memory_entries (task, response, department, route_reason, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                entry["task"],
+                entry["response"],
+                entry.get("department", ""),
+                entry.get("route_reason", ""),
+                entry["timestamp"],
+            ),
+        )
+
+    def get_memory_entries(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Return recent memory entries."""
+        return self._fetchall(
+            """
+            SELECT task, response, department, route_reason, timestamp
+            FROM memory_entries
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+
+    def list_tasks(self) -> List[Dict[str, Any]]:
+        """Return all persisted tasks in creation order."""
+        return self._fetchall(
+            """
+            SELECT *
+            FROM tasks
+            ORDER BY sequence ASC
+            """
+        )
+
+    def list_task_events(self, task_id: str) -> List[Dict[str, Any]]:
+        """Return all events for one task."""
+        return self._fetchall(
+            """
+            SELECT timestamp, actor, stage, message
+            FROM task_events
+            WHERE task_id = ?
+            ORDER BY id ASC
+            """,
+            (task_id,),
+        )
+
+    def get_data_snapshot(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Return key business records for the UI."""
+        return {
+            "leads": self._fetchall(
+                """
+                SELECT name, city, source, status, score, owner, last_contacted_at
+                FROM leads
+                ORDER BY score DESC, id ASC
+                LIMIT 8
+                """
+            ),
+            "cohorts": self._fetchall(
+                """
+                SELECT code, program, city, start_date, status, readiness_pct, enrolled_count, capacity
+                FROM cohorts
+                ORDER BY start_date ASC
+                LIMIT 6
+                """
+            ),
+            "students": self._fetchall(
+                """
+                SELECT name, program, cohort_code, status, attendance_pct, fees_due, risk_level
+                FROM students
+                ORDER BY
+                  CASE risk_level WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+                  fees_due DESC
+                LIMIT 8
+                """
+            ),
+            "payments": self._fetchall(
+                """
+                SELECT student_email, amount_due, amount_paid, status, due_date, last_action_at
+                FROM payments
+                ORDER BY amount_due DESC, due_date ASC
+                LIMIT 8
+                """
+            ),
+            "modules": self._fetchall(
+                """
+                SELECT name, program, quality_score, completion_pct, review_status, last_reviewed_at
+                FROM curriculum_modules
+                ORDER BY quality_score ASC, completion_pct ASC
+                LIMIT 8
+                """
+            ),
+            "incidents": self._fetchall(
+                """
+                SELECT title, product_area, severity, status, owner, impacted_users, last_update_at
+                FROM tech_incidents
+                ORDER BY
+                  CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END,
+                  last_update_at DESC
+                LIMIT 8
+                """
+            ),
+        }
+
+    def _append_note(self, existing: str, addition: str) -> str:
+        """Append a dated note to a record."""
+        prefix = f"[{utc_now()}] {addition}"
+        return f"{existing}\n{prefix}".strip() if existing else prefix
+
+    def apply_department_action(self, department: str, task_request: str, ai_response: str) -> str:
+        """Mutate real records based on department execution and return a summary."""
+        lowered = task_request.lower()
+
+        if department == "sales":
+            lead = self._fetchone(
+                """
+                SELECT * FROM leads
+                ORDER BY
+                  CASE status
+                    WHEN 'follow_up_due' THEN 1
+                    WHEN 'new' THEN 2
+                    WHEN 'counseled' THEN 3
+                    ELSE 4
+                  END,
+                  score DESC
+                LIMIT 1
+                """
+            )
+            if not lead:
+                return "No lead record was available to update."
+            new_status = "follow_up_scheduled"
+            if "application" in lowered or "apply" in lowered:
+                new_status = "application_review"
+            note = self._append_note(lead["notes"], f"Sales action: {ai_response[:140]}")
+            self._execute(
+                """
+                UPDATE leads
+                SET status = ?, last_contacted_at = ?, notes = ?
+                WHERE id = ?
+                """,
+                (new_status, utc_now(), note, lead["id"]),
+            )
+            return f"Updated lead {lead['name']} ({lead['city']}) to {new_status} and logged a new sales follow-up."
+
+        if department == "ops":
+            city = "Bangalore" if "bangalore" in lowered else None
+            cohort = self._fetchone(
+                """
+                SELECT * FROM cohorts
+                WHERE (? IS NULL OR city = ?)
+                ORDER BY readiness_pct ASC, start_date ASC
+                LIMIT 1
+                """,
+                (city, city),
+            )
+            if not cohort:
+                return "No cohort record was available to update."
+            readiness = min(100, cohort["readiness_pct"] + 8)
+            status = "onboarding_in_progress" if readiness >= 75 else cohort["status"]
+            note = self._append_note(cohort["notes"], f"Ops action: {ai_response[:140]}")
+            self._execute(
+                """
+                UPDATE cohorts
+                SET readiness_pct = ?, status = ?, notes = ?
+                WHERE id = ?
+                """,
+                (readiness, status, note, cohort["id"]),
+            )
+            return f"Moved cohort {cohort['code']} to {readiness}% readiness and updated the ops plan."
+
+        if department == "curriculum":
+            module_name = "JavaScript Foundations" if "javascript" in lowered else None
+            module = self._fetchone(
+                """
+                SELECT * FROM curriculum_modules
+                WHERE (? IS NULL OR name = ?)
+                ORDER BY quality_score ASC, completion_pct ASC
+                LIMIT 1
+                """,
+                (module_name, module_name),
+            )
+            if not module:
+                return "No curriculum module record was available to update."
+            score = min(100, module["quality_score"] + 3)
+            note = self._append_note(module["notes"], f"Curriculum action: {ai_response[:140]}")
+            self._execute(
+                """
+                UPDATE curriculum_modules
+                SET review_status = ?, quality_score = ?, last_reviewed_at = ?, notes = ?
+                WHERE id = ?
+                """,
+                ("revision_in_progress", score, utc_now(), note, module["id"]),
+            )
+            return f"Opened curriculum revision on {module['name']} and refreshed its review status."
+
+        if department == "accounts":
+            payment = self._fetchone(
+                """
+                SELECT * FROM payments
+                ORDER BY
+                  CASE status
+                    WHEN 'refund_review' THEN 1
+                    WHEN 'overdue' THEN 2
+                    WHEN 'partial' THEN 3
+                    ELSE 4
+                  END,
+                  amount_due DESC
+                LIMIT 1
+                """
+            )
+            if not payment:
+                return "No payment record was available to update."
+            if "refund" in lowered:
+                new_status = "refund_initiated"
+                note_label = "Refund action"
+            else:
+                new_status = "collection_followup"
+                note_label = "Collections action"
+            note = self._append_note(payment["notes"], f"{note_label}: {ai_response[:140]}")
+            self._execute(
+                """
+                UPDATE payments
+                SET status = ?, last_action_at = ?, notes = ?
+                WHERE id = ?
+                """,
+                (new_status, utc_now(), note, payment["id"]),
+            )
+            return f"Updated payment record for {payment['student_email']} to {new_status}."
+
+        if department == "tech":
+            incident = self._fetchone(
+                """
+                SELECT * FROM tech_incidents
+                ORDER BY
+                  CASE severity
+                    WHEN 'critical' THEN 1
+                    WHEN 'high' THEN 2
+                    WHEN 'medium' THEN 3
+                    ELSE 4
+                  END,
+                  last_update_at DESC
+                LIMIT 1
+                """
+            )
+            if not incident:
+                return "No incident record was available to update."
+            note = self._append_note(incident["notes"], f"Tech action: {ai_response[:140]}")
+            self._execute(
+                """
+                UPDATE tech_incidents
+                SET status = ?, owner = ?, last_update_at = ?, notes = ?
+                WHERE id = ?
+                """,
+                ("investigating", "AI Tech Lead", utc_now(), note, incident["id"]),
+            )
+            return f"Moved incident '{incident['title']}' into investigating and refreshed the technical owner."
+
+        return "No database action was applied."

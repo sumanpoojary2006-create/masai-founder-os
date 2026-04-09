@@ -1,0 +1,1 @@
+"""AI Company Simulator package."""

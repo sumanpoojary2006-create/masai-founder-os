@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Masai Founder OS Dashboard</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="top-nav">
+        <a class="brand" href="/">Masai Founder OS</a>
+        <div class="nav-links">
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link" href="/teams">Teams</a>
+          <a class="nav-link" href="/workflow">Workflow</a>
+          <a class="nav-link active nav-link-cta" href="/dashboard">Dashboard</a>
+        </div>
+      </nav>
+
+      <header class="page-header panel">
+        <div>
+          <p class="eyebrow">Live Operations Console</p>
+          <h1>Manage real-time workload across Masai.</h1>
+          <p class="hero-text">
+            Use this page when you want to create new work, watch queues shift,
+            and inspect detailed task timelines.
+          </p>
+        </div>
+        <span class="pill" id="live-status">Polling every 2s</span>
+      </header>
+
+      <main class="dashboard">
+        <section class="panel intake-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">CEO Inbox</p>
+              <h2>Create a live company task</h2>
+            </div>
+          </div>
+
+          <form id="task-form" class="task-form">
+            <div class="field-grid">
+              <label class="field">
+                <span>Task title</span>
+                <input id="task-title" type="text" placeholder="Example: Refund escalation for cancelled learner" />
+              </label>
+              <label class="field">
+                <span>Priority</span>
+                <select id="task-priority">
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Department override</span>
+                <select id="task-department">
+                  <option value="">Let CEO decide</option>
+                  <option value="sales">Sales</option>
+                  <option value="ops">Ops</option>
+                  <option value="curriculum">Curriculum</option>
+                  <option value="accounts">Accounts</option>
+                  <option value="tech">Tech</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field full-width">
+              <span>Founder request</span>
+              <textarea
+                id="task-request"
+                rows="5"
+                placeholder="Describe the real business problem the CEO should route across Masai."
+              ></textarea>
+            </label>
+
+            <div class="form-actions">
+              <button type="submit" id="submit-button">Create live task</button>
+              <p class="status-message" id="status-message">Ready to intake new company work.</p>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel departments-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Workload</p>
+              <h2>Department load right now</h2>
+            </div>
+          </div>
+          <div id="department-grid" class="department-grid"></div>
+        </section>
+
+        <section class="panel taskboard-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Task Board</p>
+              <h2>Live task movement</h2>
+            </div>
+          </div>
+          <div id="task-columns" class="task-columns"></div>
+        </section>
+
+        <section class="panel detail-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Selected Task</p>
+              <h2 id="detail-title">Choose a task to inspect its workflow</h2>
+            </div>
+            <span class="department-badge" id="detail-department">No task selected</span>
+          </div>
+
+          <div class="detail-grid">
+            <div class="detail-card">
+              <p class="summary-label">CEO routing reason</p>
+              <p class="summary-text" id="detail-reason">Click any task card to inspect the live event stream.</p>
+            </div>
+            <div class="detail-card">
+              <p class="summary-label">Database effect</p>
+              <p class="summary-text" id="detail-effect">No database change yet.</p>
+            </div>
+            <div class="detail-card">
+              <p class="summary-label">Result / error</p>
+              <pre class="result-output compact" id="detail-result">No result yet.</pre>
+            </div>
+          </div>
+
+          <div class="detail-actions" id="detail-actions"></div>
+          <div class="event-list" id="event-list"></div>
+        </section>
+
+        <section class="panel activity-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Activity Feed</p>
+              <h2>Latest events across the company</h2>
+            </div>
+          </div>
+          <div id="activity-list" class="activity-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/vercel-config.js"></script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
