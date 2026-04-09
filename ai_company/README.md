@@ -176,6 +176,7 @@ AI_COMPANY_PORT=8001 python webapp.py
 ## Environment Variables
 
 - `OPENROUTER_API_KEY`: required for live AI task execution
+- `DATABASE_URL`: hosted Postgres connection string for free cloud deployment
 - `AI_COMPANY_HOST`: server bind host, defaults to `127.0.0.1`
 - `AI_COMPANY_PORT`: server port, defaults to `8000`
 - `AI_COMPANY_DB_PATH`: SQLite database path, defaults to `masai_founder_os.db`
@@ -183,6 +184,7 @@ AI_COMPANY_PORT=8001 python webapp.py
 
 For local development, these can live in `.env.local`.
 For Render and Docker, keep using platform environment variables.
+If `DATABASE_URL` is set, the app uses hosted Postgres. If not, it falls back to local SQLite.
 
 ## Running with Docker
 
@@ -192,8 +194,7 @@ From the repository root:
 docker build -t masai-founder-os .
 docker run -p 8000:8000 \
   -e OPENROUTER_API_KEY="your_api_key_here" \
-  -e AI_COMPANY_DB_PATH=/data/masai_founder_os.db \
-  -v "$(pwd)/data:/data" \
+  -e DATABASE_URL="your_postgres_connection_string" \
   masai-founder-os
 ```
 
@@ -206,17 +207,15 @@ This repository includes `render.yaml` and a `Dockerfile`.
 ### Deploy flow
 
 1. Push this repository to GitHub.
-2. In Render, create a new Blueprint deployment from the GitHub repo.
-3. Render will read `render.yaml`.
-4. Add `OPENROUTER_API_KEY` as a secret environment variable.
-5. Let Render provision the attached disk at `/data`.
-6. Deploy and open the service URL.
+2. Create a free Postgres database in Render.
+3. Copy its external database URL.
+4. In Render, create a new Blueprint deployment from the GitHub repo.
+5. Render will read `render.yaml`.
+6. Add `OPENROUTER_API_KEY` as a secret environment variable.
+7. Add `DATABASE_URL` using the Render Postgres connection string.
+8. Deploy and open the service URL.
 
-The app stores the production SQLite file on the mounted disk using:
-
-```text
-/data/masai_founder_os.db
-```
+This keeps the backend fully free for short-lived demos while preserving real company data in a hosted database.
 
 ## Deploying the Frontend on Vercel
 

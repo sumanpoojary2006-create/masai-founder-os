@@ -8,13 +8,9 @@ services:
     envVars:
       - key: OPENROUTER_API_KEY
         sync: false
+      - key: DATABASE_URL
+        sync: false
       - key: AI_COMPANY_HOST
         value: 0.0.0.0
       - key: AI_COMPANY_PORT
         value: 8000
-      - key: AI_COMPANY_DB_PATH
-        value: /data/masai_founder_os.db
-    disk:
-      name: masai-founder-os-data
-      mountPath: /data
-      sizeGB: 1

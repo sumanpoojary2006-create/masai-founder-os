@@ -1,17 +1,24 @@
-"""SQLite persistence layer for Masai Founder OS."""
+"""Persistence layer for Masai Founder OS.
+
+Supports:
+- SQLite for local development
+- Postgres via DATABASE_URL for free cloud deployments
+"""
 
 from __future__ import annotations
 
 import sqlite3
+import ssl
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 try:
-    from ai_company.config import DATABASE_PATH
+    from ai_company.config import DATABASE_PATH, DATABASE_URL
 except ImportError:
-    from config import DATABASE_PATH
+    from config import DATABASE_PATH, DATABASE_URL
 
 
 def utc_now() -> str:
@@ -20,39 +27,206 @@ def utc_now() -> str:
 
 
 class Database:
-    """Simple SQLite wrapper for company records and task history."""
+    """Database wrapper for company records and task history."""
 
-    def __init__(self, path: Optional[str] = None) -> None:
+    def __init__(self, path: Optional[str] = None, url: Optional[str] = None) -> None:
+        self.url = (url or DATABASE_URL or "").strip()
         self.path = Path(path or DATABASE_PATH)
         self._lock = Lock()
-        self._conn = sqlite3.connect(self.path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
+        self.backend = "postgres" if self.url else "sqlite"
+        self._conn = self._connect()
+        if self.backend == "sqlite":
+            self._conn.row_factory = sqlite3.Row
 
-    def _execute(self, query: str, params: tuple = ()) -> sqlite3.Cursor:
+    def _connect(self):
+        if self.backend == "postgres":
+            import pg8000.dbapi
+
+            parsed = urlparse(self.url)
+            ssl_context = None
+            if parsed.hostname not in {"localhost", "127.0.0.1"}:
+                ssl_context = ssl.create_default_context()
+            return pg8000.dbapi.connect(
+                user=parsed.username or "",
+                password=parsed.password or "",
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 5432,
+                database=(parsed.path or "/").lstrip("/"),
+                ssl_context=ssl_context,
+            )
+        return sqlite3.connect(self.path, check_same_thread=False)
+
+    def _adapt_query(self, query: str) -> str:
+        if self.backend == "postgres":
+            return query.replace("?", "%s")
+        return query
+
+    def _fetch_rows(self, cursor) -> List[Dict[str, Any]]:
+        if self.backend == "sqlite":
+            return [dict(row) for row in cursor.fetchall()]
+        columns = [column[0] for column in cursor.description] if cursor.description else []
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def _execute(self, query: str, params: tuple = ()):
         with self._lock:
-            cursor = self._conn.execute(query, params)
+            cursor = self._conn.cursor()
+            cursor.execute(self._adapt_query(query), params)
             self._conn.commit()
             return cursor
 
     def _executemany(self, query: str, rows: List[tuple]) -> None:
         with self._lock:
-            self._conn.executemany(query, rows)
+            cursor = self._conn.cursor()
+            cursor.executemany(self._adapt_query(query), rows)
             self._conn.commit()
 
     def _fetchall(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
         with self._lock:
-            cursor = self._conn.execute(query, params)
-            rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+            cursor = self._conn.cursor()
+            cursor.execute(self._adapt_query(query), params)
+            return self._fetch_rows(cursor)
 
     def _fetchone(self, query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
-        with self._lock:
-            cursor = self._conn.execute(query, params)
-            row = cursor.fetchone()
-        return dict(row) if row else None
+        rows = self._fetchall(query, params)
+        return rows[0] if rows else None
 
     def init_schema(self) -> None:
         """Create all required tables if they do not exist."""
+        if self.backend == "postgres":
+            statements = [
+                """
+                CREATE TABLE IF NOT EXISTS leads (
+                id BIGSERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                program TEXT NOT NULL,
+                source TEXT NOT NULL,
+                city TEXT NOT NULL,
+                status TEXT NOT NULL,
+                owner TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                last_contacted_at TEXT,
+                notes TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS cohorts (
+                id BIGSERIAL PRIMARY KEY,
+                code TEXT NOT NULL,
+                program TEXT NOT NULL,
+                city TEXT NOT NULL,
+                start_date TEXT NOT NULL,
+                status TEXT NOT NULL,
+                capacity INTEGER NOT NULL,
+                enrolled_count INTEGER NOT NULL,
+                readiness_pct INTEGER NOT NULL,
+                notes TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS students (
+                id BIGSERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                program TEXT NOT NULL,
+                cohort_code TEXT NOT NULL,
+                city TEXT NOT NULL,
+                status TEXT NOT NULL,
+                attendance_pct INTEGER NOT NULL,
+                fees_due INTEGER NOT NULL,
+                risk_level TEXT NOT NULL,
+                notes TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS payments (
+                id BIGSERIAL PRIMARY KEY,
+                student_email TEXT NOT NULL,
+                amount_due INTEGER NOT NULL,
+                amount_paid INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                due_date TEXT NOT NULL,
+                last_action_at TEXT,
+                notes TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS curriculum_modules (
+                id BIGSERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                program TEXT NOT NULL,
+                quality_score INTEGER NOT NULL,
+                completion_pct INTEGER NOT NULL,
+                review_status TEXT NOT NULL,
+                last_reviewed_at TEXT,
+                notes TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS tech_incidents (
+                id BIGSERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                product_area TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                status TEXT NOT NULL,
+                owner TEXT NOT NULL,
+                impacted_users INTEGER NOT NULL,
+                opened_at TEXT NOT NULL,
+                last_update_at TEXT NOT NULL,
+                notes TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                sequence INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                request TEXT NOT NULL,
+                priority TEXT NOT NULL,
+                status TEXT NOT NULL,
+                department TEXT,
+                department_label TEXT,
+                ceo_reason TEXT,
+                result TEXT,
+                error TEXT,
+                assignee TEXT,
+                queue_position INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                started_at TEXT,
+                completed_at TEXT,
+                cycle_seconds DOUBLE PRECISION DEFAULT 0,
+                data_effect TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS task_events (
+                id BIGSERIAL PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                message TEXT NOT NULL
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS memory_entries (
+                id BIGSERIAL PRIMARY KEY,
+                task TEXT NOT NULL,
+                response TEXT NOT NULL,
+                department TEXT,
+                route_reason TEXT,
+                timestamp TEXT NOT NULL
+            )
+                """,
+            ]
+            with self._lock:
+                cursor = self._conn.cursor()
+                for statement in statements:
+                    cursor.execute(statement)
+                self._conn.commit()
+            return
+
         schema = """
         CREATE TABLE IF NOT EXISTS leads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -320,7 +494,6 @@ class Database:
         )
 
     def save_task_event(self, task_id: str, event: Dict[str, Any]) -> None:
-        """Persist one task event."""
         self._execute(
             """
             INSERT INTO task_events (task_id, timestamp, actor, stage, message)
@@ -330,7 +503,6 @@ class Database:
         )
 
     def save_memory_entry(self, entry: Dict[str, Any]) -> None:
-        """Persist a memory record."""
         self._execute(
             """
             INSERT INTO memory_entries (task, response, department, route_reason, timestamp)
@@ -346,7 +518,6 @@ class Database:
         )
 
     def get_memory_entries(self, limit: int = 20) -> List[Dict[str, Any]]:
-        """Return recent memory entries."""
         return self._fetchall(
             """
             SELECT task, response, department, route_reason, timestamp
@@ -358,17 +529,9 @@ class Database:
         )
 
     def list_tasks(self) -> List[Dict[str, Any]]:
-        """Return all persisted tasks in creation order."""
-        return self._fetchall(
-            """
-            SELECT *
-            FROM tasks
-            ORDER BY sequence ASC
-            """
-        )
+        return self._fetchall("SELECT * FROM tasks ORDER BY sequence ASC")
 
     def list_task_events(self, task_id: str) -> List[Dict[str, Any]]:
-        """Return all events for one task."""
         return self._fetchall(
             """
             SELECT timestamp, actor, stage, message
@@ -380,7 +543,6 @@ class Database:
         )
 
     def get_data_snapshot(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Return key business records for the UI."""
         return {
             "leads": self._fetchall(
                 """
@@ -437,12 +599,10 @@ class Database:
         }
 
     def _append_note(self, existing: str, addition: str) -> str:
-        """Append a dated note to a record."""
         prefix = f"[{utc_now()}] {addition}"
         return f"{existing}\n{prefix}".strip() if existing else prefix
 
     def apply_department_action(self, department: str, task_request: str, ai_response: str) -> str:
-        """Mutate real records based on department execution and return a summary."""
         lowered = task_request.lower()
 
         if department == "sales":
