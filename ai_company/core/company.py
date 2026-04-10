@@ -55,6 +55,7 @@ class CompanyRuntime:
         self.db = Database()
         self.db.init_schema()
         self.db.seed_if_empty()
+        self.db.apply_demo_contact_overrides()
         self.email_service = EmailService()
         self.playbooks = OperationalPlaybooks(self.db, self.email_service)
         self.memory = MemoryStore()

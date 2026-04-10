@@ -415,11 +415,11 @@ class Database:
 
         now = datetime.utcnow()
         lead_rows = [
-            ("Aarav Shah", "aarav@sample.com", "Full Stack Web Development", "Weekend Webinar", "Bangalore", "new", "AI SDR 1", 82, None, "Asked about ISA and placement outcomes."),
+            ("Aarav Shah", "suman.poojary2006@gmail.com", "Full Stack Web Development", "Weekend Webinar", "Bangalore", "new", "AI SDR 1", 82, None, "Asked about ISA and placement outcomes."),
             ("Diya Menon", "diya@sample.com", "Data Analytics", "Organic", "Mumbai", "counseled", "AI SDR 2", 74, utc_now(), "Interested in weekend-friendly learning schedule."),
             ("Rohan Gupta", "rohan@sample.com", "Backend Development", "Referral", "Delhi", "follow_up_due", "AI SDR 1", 68, (now - timedelta(days=2)).isoformat(timespec="seconds") + "Z", "Needs clarity on financing options."),
             ("Sneha Iyer", "sneha@sample.com", "Product Design", "Campus Event", "Chennai", "application_started", "AI SDR 3", 88, (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "High intent lead, paused after counselor call."),
-            ("Kabir Jain", "kabir@sample.com", "Full Stack Web Development", "Weekend Webinar", "Bangalore", "new", "AI SDR 2", 79, None, "Looking for cohort starting this month."),
+            ("Kabir Jain", "rahulajay34@gmail.com", "Full Stack Web Development", "Weekend Webinar", "Bangalore", "new", "AI SDR 2", 79, None, "Looking for cohort starting this month."),
         ]
         self._executemany(
             """
@@ -447,7 +447,7 @@ class Database:
             ("Karan Patel", "karan@masai.com", "Data Analytics", "DA-MUM-APR", "Mumbai", "active", 76, 15000, "medium", "Delayed second installment."),
             ("Meera Nair", "meera@masai.com", "Backend Development", "BE-DEL-MAY", "Delhi", "onboarding", 0, 30000, "medium", "Requested flexible payment structure."),
             ("Rahul S", "rahul@masai.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 62, 25000, "high", "Attendance dropped after sprint 2."),
-            ("Ananya Das", "ananya@masai.com", "Product Design", "PD-BLR-MAY", "Bangalore", "refund_requested", 0, 45000, "high", "Requested refund after deferral."),
+            ("Ananya Das", "huzaifasheikh7860123@gmail.com", "Product Design", "PD-BLR-MAY", "Bangalore", "refund_requested", 0, 45000, "high", "Requested refund after deferral."),
         ]
         self._executemany(
             """
@@ -462,7 +462,7 @@ class Database:
             ("karan@masai.com", 15000, 105000, "overdue", "2026-04-06", (now - timedelta(days=3)).isoformat(timespec="seconds") + "Z", "Reminder sent once.", 0),
             ("meera@masai.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement.", 0),
             ("rahul@masai.com", 25000, 95000, "overdue", "2026-04-03", (now - timedelta(days=4)).isoformat(timespec="seconds") + "Z", "Needs escalation.", 0),
-            ("ananya@masai.com", 45000, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review.", 0),
+            ("huzaifasheikh7860123@gmail.com", 45000, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review.", 0),
         ]
         self._executemany(
             """
@@ -497,6 +497,28 @@ class Database:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             incident_rows,
+        )
+
+    def apply_demo_contact_overrides(self) -> None:
+        """Replace placeholder/demo inboxes with the live demo inboxes requested by the user."""
+        overrides = [
+            ("Aarav Shah", "suman.poojary2006@gmail.com"),
+            ("Kabir Jain", "rahulajay34@gmail.com"),
+        ]
+        for name, email in overrides:
+            self._execute("UPDATE leads SET email = ? WHERE name = ?", (email, name))
+
+        self._execute(
+            "UPDATE students SET email = ? WHERE name = ?",
+            ("huzaifasheikh7860123@gmail.com", "Ananya Das"),
+        )
+        self._execute(
+            """
+            UPDATE payments
+            SET student_email = ?
+            WHERE student_email = ? OR student_email = ?
+            """,
+            ("huzaifasheikh7860123@gmail.com", "ananya@masai.com", "huzaifasheikh7860123@gmail.com"),
         )
 
     def save_task(self, task: Dict[str, Any]) -> None:
