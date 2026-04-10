@@ -476,7 +476,7 @@ class Database:
             ("s102", "Suman", "suman.poojary2006@gmail.com", "Data Analytics", "DA-MUM-APR", "Mumbai", "refund_requested", 0, 0, "medium", "Requested refund after financial-plan reconsideration."),
             ("s103", "Huzaifa", "huzaifasheikh7860123@gmail.com", "Product Design", "PD-BLR-MAY", "Bangalore", "active", 74, 0, "low", "Recently completed onboarding and payment confirmation."),
             ("s104", "Krishnan", "krishnan.parameswaran0111@gmail.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 84, 0, "low", "Recently completed onboarding and is ready for mentor allocation."),
-            ("s105", "Meera Nair", "meera@masai.com", "Backend Development", "BE-DEL-MAY", "Delhi", "onboarding", 0, 30000, "medium", "Requested flexible payment structure."),
+            ("s105", "Amit Singh", "singh25nov@gmail.com", "Backend Development", "BE-DEL-MAY", "Delhi", "onboarding", 0, 30000, "medium", "Requested flexible payment structure."),
         ]
         self._executemany(
             """
@@ -491,7 +491,7 @@ class Database:
             ("suman.poojary2006@gmail.com", 0, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review.", 0),
             ("huzaifasheikh7860123@gmail.com", 0, 120000, "paid", "2026-04-10", utc_now(), "Full fee received and enrollment confirmed.", 0),
             ("krishnan.parameswaran0111@gmail.com", 0, 120000, "paid", "2026-04-10", utc_now(), "All installments cleared.", 0),
-            ("meera@masai.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement.", 0),
+            ("singh25nov@gmail.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement.", 0),
         ]
         self._executemany(
             """
@@ -531,11 +531,14 @@ class Database:
     def apply_demo_contact_overrides(self) -> None:
         """Keep the demo roster stable so tasks can target learners by student code."""
         lead_overrides = [
-            ("Aarav Shah", "suman.poojary2006@gmail.com"),
-            ("Kabir Jain", "rahulajay34@gmail.com"),
+            ("Aarav Shah", "suman.poojary2006@gmail.com", "new"),
+            ("Kabir Jain", "rahulajay34@gmail.com", "new"),
         ]
-        for name, email in lead_overrides:
-            self._execute("UPDATE leads SET email = ? WHERE name = ?", (email, name))
+        for name, email, status in lead_overrides:
+            self._execute(
+                "UPDATE leads SET email = ?, status = ?, last_contacted_at = NULL WHERE name = ?",
+                (email, status, name),
+            )
 
         student_directory = [
             {
@@ -584,10 +587,10 @@ class Database:
             },
             {
                 "student_code": "s105",
-                "name": "Meera Nair",
-                "email": "meera@masai.com",
-                "aliases": ("Meera Nair",),
-                "emails": ("meera@masai.com",),
+                "name": "Amit Singh",
+                "email": "singh25nov@gmail.com",
+                "aliases": ("Meera Nair", "Amit Singh"),
+                "emails": ("meera@masai.com", "singh25nov@gmail.com"),
                 "status": "onboarding",
                 "fees_due": 30000,
                 "risk_level": "medium",
@@ -646,6 +649,11 @@ class Database:
                     *student["emails"],
                 ),
             )
+
+    def clear_demo_request_data(self) -> None:
+        """Reset request-driven history so the demo starts from a clean slate."""
+        for table in ("task_events", "tasks", "memory_entries", "email_outbox", "refund_ledger"):
+            self._execute(f"DELETE FROM {table}")
 
     def save_task(self, task: Dict[str, Any]) -> None:
         """Insert or update one task."""
