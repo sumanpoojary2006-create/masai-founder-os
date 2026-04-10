@@ -475,7 +475,7 @@ class Database:
             ("s101", "Rahul", "rahulajay34@gmail.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 62, 25000, "high", "Attendance dropped after sprint 2."),
             ("s102", "Suman", "suman.poojary2006@gmail.com", "Data Analytics", "DA-MUM-APR", "Mumbai", "refund_requested", 0, 0, "medium", "Requested refund after financial-plan reconsideration."),
             ("s103", "Huzaifa", "huzaifasheikh7860123@gmail.com", "Product Design", "PD-BLR-MAY", "Bangalore", "active", 74, 0, "low", "Recently completed onboarding and payment confirmation."),
-            ("s104", "Nikita Rao", "nikita@masai.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 88, 0, "low", "Strong assignment completion."),
+            ("s104", "Krishnan", "krishnan.parameswaran0111@gmail.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 84, 0, "low", "Recently completed onboarding and is ready for mentor allocation."),
             ("s105", "Meera Nair", "meera@masai.com", "Backend Development", "BE-DEL-MAY", "Delhi", "onboarding", 0, 30000, "medium", "Requested flexible payment structure."),
         ]
         self._executemany(
@@ -490,7 +490,7 @@ class Database:
             ("rahulajay34@gmail.com", 25000, 95000, "overdue", "2026-04-03", (now - timedelta(days=4)).isoformat(timespec="seconds") + "Z", "Needs escalation.", 0),
             ("suman.poojary2006@gmail.com", 0, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review.", 0),
             ("huzaifasheikh7860123@gmail.com", 0, 120000, "paid", "2026-04-10", utc_now(), "Full fee received and enrollment confirmed.", 0),
-            ("nikita@masai.com", 0, 120000, "paid", "2026-04-10", utc_now(), "All installments cleared.", 0),
+            ("krishnan.parameswaran0111@gmail.com", 0, 120000, "paid", "2026-04-10", utc_now(), "All installments cleared.", 0),
             ("meera@masai.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement.", 0),
         ]
         self._executemany(
@@ -573,10 +573,10 @@ class Database:
             },
             {
                 "student_code": "s104",
-                "name": "Nikita Rao",
-                "email": "nikita@masai.com",
-                "aliases": ("Nikita Rao",),
-                "emails": ("nikita@masai.com",),
+                "name": "Krishnan",
+                "email": "krishnan.parameswaran0111@gmail.com",
+                "aliases": ("Nikita Rao", "Krishnan", "Krishnan Parameswaran"),
+                "emails": ("nikita@masai.com", "krishnan.parameswaran0111@gmail.com"),
                 "status": "active",
                 "fees_due": 0,
                 "risk_level": "low",
