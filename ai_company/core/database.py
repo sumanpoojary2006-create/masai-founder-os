@@ -46,7 +46,7 @@ class Database:
             ssl_context = None
             if parsed.hostname not in {"localhost", "127.0.0.1"}:
                 ssl_context = ssl.create_default_context()
-            return pg8000.dbapi.connect(
+            connection = pg8000.dbapi.connect(
                 user=parsed.username or "",
                 password=parsed.password or "",
                 host=parsed.hostname or "localhost",
@@ -54,6 +54,11 @@ class Database:
                 database=(parsed.path or "/").lstrip("/"),
                 ssl_context=ssl_context,
             )
+            try:
+                connection.autocommit = True
+            except Exception:
+                pass
+            return connection
         return sqlite3.connect(self.path, check_same_thread=False)
 
     def _adapt_query(self, query: str) -> str:
@@ -70,21 +75,33 @@ class Database:
     def _execute(self, query: str, params: tuple = ()):
         with self._lock:
             cursor = self._conn.cursor()
-            cursor.execute(self._adapt_query(query), params)
-            self._conn.commit()
-            return cursor
+            try:
+                cursor.execute(self._adapt_query(query), params)
+                self._conn.commit()
+                return cursor
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def _executemany(self, query: str, rows: List[tuple]) -> None:
         with self._lock:
             cursor = self._conn.cursor()
-            cursor.executemany(self._adapt_query(query), rows)
-            self._conn.commit()
+            try:
+                cursor.executemany(self._adapt_query(query), rows)
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def _fetchall(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
         with self._lock:
             cursor = self._conn.cursor()
-            cursor.execute(self._adapt_query(query), params)
-            return self._fetch_rows(cursor)
+            try:
+                cursor.execute(self._adapt_query(query), params)
+                return self._fetch_rows(cursor)
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def _fetchone(self, query: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
         rows = self._fetchall(query, params)
@@ -250,10 +267,14 @@ class Database:
             ]
             with self._lock:
                 cursor = self._conn.cursor()
-                for statement in statements:
-                    cursor.execute(statement)
-                cursor.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_amount INTEGER DEFAULT 0")
-                self._conn.commit()
+                try:
+                    for statement in statements:
+                        cursor.execute(statement)
+                    cursor.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_amount INTEGER DEFAULT 0")
+                    self._conn.commit()
+                except Exception:
+                    self._conn.rollback()
+                    raise
             return
 
         schema = """
