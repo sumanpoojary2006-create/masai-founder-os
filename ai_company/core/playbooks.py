@@ -16,6 +16,59 @@ except ImportError:
 class OperationalPlaybooks:
     """Execute deterministic business workflows after department reasoning."""
 
+    TEAM_EMAIL_META = {
+        "sales": {
+            "team_name": "Masai Sales Team",
+            "subject_prefix": "Admissions update",
+            "default_summary": "We are reaching out with the next best admissions step for you.",
+            "bullets": [
+                "We reviewed your current admissions context and prepared the next recommended action.",
+                "Reply to this email if you want a counselor callback or application support.",
+                "Our team can help you move from inquiry to application with one guided step.",
+            ],
+        },
+        "ops": {
+            "team_name": "Masai Ops Team",
+            "subject_prefix": "Operations update",
+            "default_summary": "We are sharing the latest update about your cohort operations or learner journey.",
+            "bullets": [
+                "Your request has been picked up by the operations team.",
+                "We have documented the next operational step in the system.",
+                "Reply if you want a manual callback from the ops desk.",
+            ],
+        },
+        "curriculum": {
+            "team_name": "Masai Curriculum Team",
+            "subject_prefix": "Learning update",
+            "default_summary": "We are sharing the next academic recommendation from the curriculum team.",
+            "bullets": [
+                "We reviewed the academic context behind your request.",
+                "The curriculum team has documented the next learning recommendation.",
+                "Reply if you want a mentor or curriculum callback.",
+            ],
+        },
+        "accounts": {
+            "team_name": "Masai Accounts Team",
+            "subject_prefix": "Accounts update",
+            "default_summary": "We are sharing the latest finance or payment update from the accounts team.",
+            "bullets": [
+                "Your finance-related request has been reviewed by accounts.",
+                "The relevant payment or refund note has been logged in the system.",
+                "Reply if you want the team to share the next payment action or reference.",
+            ],
+        },
+        "tech": {
+            "team_name": "Masai Tech Team",
+            "subject_prefix": "Platform update",
+            "default_summary": "We are sharing a technical update about your platform-related request.",
+            "bullets": [
+                "The technical issue or request has been reviewed by the platform team.",
+                "A concrete next step has been documented for the product or engineering flow.",
+                "Reply if you want an updated ETA or issue reference number.",
+            ],
+        },
+    }
+
     def __init__(self, db: Database, email_service: Optional[EmailService] = None) -> None:
         self.db = db
         self.email_service = email_service or EmailService()
@@ -36,6 +89,8 @@ class OperationalPlaybooks:
             return self._run_webinar_follow_up(task_request, ai_response, task_id)
         if department == "accounts" and "refund" in lowered:
             return self._run_refund_initiation(task_request, ai_response, task_id)
+        if any(word in lowered for word in ("email", "mail", "notify", "message", "send")):
+            return self._run_team_email(task_request, ai_response, task_id, department)
 
         return {"summary": self.db.apply_department_action(department, task_request, ai_response), "events": []}
 
@@ -46,7 +101,9 @@ class OperationalPlaybooks:
             department == "sales"
             and "webinar" in lowered
             and any(word in lowered for word in ("email", "mail", "follow-up", "follow up", "reach out", "send"))
-        ) or (department == "accounts" and "refund" in lowered)
+        ) or (department == "accounts" and "refund" in lowered) or any(
+            word in lowered for word in ("email", "mail", "notify", "message", "send")
+        )
 
     def _extract_city(self, task_request: str) -> str:
         lowered = task_request.lower()
@@ -103,6 +160,95 @@ class OperationalPlaybooks:
           </body>
         </html>
         """.strip()
+
+    def _build_generic_subject(self, department: str, task_request: str, target: Dict[str, object]) -> str:
+        meta = self.TEAM_EMAIL_META[department]
+        label = target.get("student_code") or target.get("program") or target.get("city") or target.get("name")
+        return f"{meta['subject_prefix']} from Masai - {label}"
+
+    def _run_team_email(self, task_request: str, ai_response: str, task_id: str, department: str) -> Dict[str, object]:
+        targets = self.db.find_email_targets(department, task_request, limit=5)
+        if not targets:
+            return {"summary": "No matching contact was found for this email request.", "events": []}
+
+        meta = self.TEAM_EMAIL_META[department]
+        ai_summary = self._clean_ai_summary(ai_response, meta["default_summary"])
+        sent_count = 0
+        queued_count = 0
+        failed_count = 0
+
+        for target in targets:
+            recipient_label = target.get("student_code") or target.get("name") or target.get("email")
+            subject = self._build_generic_subject(department, task_request, target)
+            bullets = meta["bullets"]
+            body = (
+                f"Hi {target['name']},\n\n"
+                f"{ai_summary}\n\n"
+                "What happens next:\n"
+                f"- {bullets[0]}\n"
+                f"- {bullets[1]}\n"
+                f"- {bullets[2]}\n\n"
+                "If you need help, just reply to this email and the team will follow up.\n\n"
+                f"Best,\n{meta['team_name']}"
+            )
+            html_body = self._render_email_html(
+                title=subject,
+                greeting=f"Hi {target['name']},",
+                intro=ai_summary,
+                bullets=bullets,
+                closing="If you need help, just reply to this email and the team will follow up.",
+                team_name=meta["team_name"],
+            )
+            delivery = self.email_service.deliver(target["email"], subject, body, html_body=html_body)
+            self.db.add_email_outbox_entry(
+                task_id=task_id,
+                department=department,
+                recipient_name=target["name"],
+                recipient_email=target["email"],
+                subject=subject,
+                body=body,
+                status=delivery["status"],
+                delivery_note=delivery["delivery_note"],
+                sent_at=delivery["sent_at"],
+            )
+
+            if target.get("target_type") == "lead":
+                self.db.mark_lead_follow_up(
+                    lead_id=target["id"],
+                    note=f"{department.title()} email {delivery['status']} for {recipient_label}.",
+                    status="outreach_sent",
+                )
+            else:
+                self.db.log_student_communication(
+                    student_id=target["id"],
+                    note=f"{department.title()} email {delivery['status']} for {recipient_label}.",
+                )
+
+            if delivery["status"] == "sent":
+                sent_count += 1
+            elif delivery["status"] == "failed":
+                failed_count += 1
+            else:
+                queued_count += 1
+
+        return {
+            "summary": (
+                f"{meta['team_name']} emailed {len(targets)} contact(s). "
+                f"Emails: {sent_count} sent, {queued_count} queued, {failed_count} failed."
+            ),
+            "events": [
+                {
+                    "actor": f"{department.title()} Automation",
+                    "stage": "automation",
+                    "message": f"Prepared and sent email communication for {len(targets)} contact(s).",
+                },
+                {
+                    "actor": "Email Outbox",
+                    "stage": "email_outbox",
+                    "message": f"Email outcomes: {sent_count} sent, {queued_count} queued, {failed_count} failed.",
+                },
+            ],
+        }
 
     def _run_webinar_follow_up(self, task_request: str, ai_response: str, task_id: str) -> Dict[str, object]:
         city = self._extract_city(task_request)

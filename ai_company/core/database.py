@@ -863,6 +863,103 @@ class Database:
             (city, city, limit),
         )
 
+    def find_lead_targets(self, task_request: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Find lead contacts mentioned in a task, or infer a city/program cohort when possible."""
+        lowered = task_request.lower()
+        rows = self._fetchall(
+            """
+            SELECT id, name, email, city, program, status, source, notes, score
+            FROM leads
+            ORDER BY score DESC, id ASC
+            """
+        )
+        explicit_matches = [
+            row
+            for row in rows
+            if row["email"].lower() in lowered or row["name"].lower() in lowered
+        ]
+        if explicit_matches:
+            return explicit_matches[:limit]
+
+        city = ""
+        for candidate in ("bangalore", "mumbai", "delhi", "chennai"):
+            if candidate in lowered:
+                city = candidate.title()
+                break
+
+        filtered = rows
+        if city:
+            filtered = [row for row in filtered if row["city"] == city]
+        if "webinar" in lowered:
+            filtered = [row for row in filtered if "webinar" in row["source"].lower()]
+        if "full stack" in lowered:
+            filtered = [row for row in filtered if "full stack" in row["program"].lower()]
+        if "data" in lowered:
+            filtered = [row for row in filtered if "data" in row["program"].lower()]
+        if "backend" in lowered:
+            filtered = [row for row in filtered if "backend" in row["program"].lower()]
+        if "design" in lowered:
+            filtered = [row for row in filtered if "design" in row["program"].lower()]
+        return filtered[:limit]
+
+    def find_student_targets(self, task_request: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Find learner contacts using student code, explicit name/email, or broad city/program hints."""
+        lowered = task_request.lower()
+        code_matches = set(re.findall(r"\b(s\d{3})\b", lowered))
+        rows = self._fetchall(
+            """
+            SELECT id, student_code, name, email, program, cohort_code, city, status, notes
+            FROM students
+            ORDER BY id ASC
+            """
+        )
+
+        if code_matches:
+            matched = [row for row in rows if (row.get("student_code") or "").lower() in code_matches]
+            if matched:
+                return matched[:limit]
+
+        explicit_matches = [
+            row
+            for row in rows
+            if row["email"].lower() in lowered or row["name"].lower() in lowered
+        ]
+        if explicit_matches:
+            return explicit_matches[:limit]
+
+        city = ""
+        for candidate in ("bangalore", "mumbai", "delhi", "chennai"):
+            if candidate in lowered:
+                city = candidate.title()
+                break
+
+        filtered = rows
+        if city:
+            filtered = [row for row in filtered if row["city"] == city]
+        if "full stack" in lowered:
+            filtered = [row for row in filtered if "full stack" in row["program"].lower()]
+        if "data" in lowered:
+            filtered = [row for row in filtered if "data" in row["program"].lower()]
+        if "backend" in lowered:
+            filtered = [row for row in filtered if "backend" in row["program"].lower()]
+        if "design" in lowered:
+            filtered = [row for row in filtered if "design" in row["program"].lower()]
+        return filtered[:limit]
+
+    def find_email_targets(self, department: str, task_request: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Return the best recipient list for a team email request."""
+        lowered = task_request.lower()
+        if department == "sales" and "student" not in lowered and "learner" not in lowered:
+            targets = self.find_lead_targets(task_request, limit=limit)
+            for target in targets:
+                target["target_type"] = "lead"
+            return targets
+
+        targets = self.find_student_targets(task_request, limit=limit)
+        for target in targets:
+            target["target_type"] = "student"
+        return targets
+
     def mark_lead_follow_up(self, lead_id: int, note: str, status: str) -> None:
         lead = self._fetchone("SELECT notes FROM leads WHERE id = ?", (lead_id,))
         existing_notes = lead["notes"] if lead else ""
@@ -873,6 +970,18 @@ class Database:
             WHERE id = ?
             """,
             (status, utc_now(), self._append_note(existing_notes, note), lead_id),
+        )
+
+    def log_student_communication(self, student_id: int, note: str) -> None:
+        student = self._fetchone("SELECT notes FROM students WHERE id = ?", (student_id,))
+        existing_notes = student["notes"] if student else ""
+        self._execute(
+            """
+            UPDATE students
+            SET notes = ?
+            WHERE id = ?
+            """,
+            (self._append_note(existing_notes, note), student_id),
         )
 
     def add_email_outbox_entry(
