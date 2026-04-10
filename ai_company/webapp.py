@@ -82,22 +82,16 @@ class CompanyRequestHandler(BaseHTTPRequestHandler):
         """Serve the dashboard shell and live state endpoints."""
         path = urlparse(self.path).path
         page_map = {
-            "/": "index.html",
-            "/index.html": "index.html",
+            "/": "dashboard.html",
             "/dashboard": "dashboard.html",
             "/dashboard.html": "dashboard.html",
             "/completed": "completed.html",
             "/completed.html": "completed.html",
-            "/teams": "teams.html",
-            "/teams.html": "teams.html",
-            "/workflow": "workflow.html",
-            "/workflow.html": "workflow.html",
         }
         asset_map = {
             "/assets/styles.css": "styles.css",
             "/assets/app.js": "app.js",
             "/assets/completed.js": "completed.js",
-            "/assets/overview.js": "overview.js",
             "/assets/vercel-config.js": "vercel-config.js",
         }
 

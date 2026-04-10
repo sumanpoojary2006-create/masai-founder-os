@@ -4,12 +4,8 @@
   "cleanUrls": false,
   "rewrites": [
     {
-      "source": "/teams",
-      "destination": "/teams.html"
-    },
-    {
-      "source": "/workflow",
-      "destination": "/workflow.html"
+      "source": "/",
+      "destination": "/dashboard.html"
     },
     {
       "source": "/dashboard",
