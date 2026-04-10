@@ -779,10 +779,18 @@ class Database:
             ),
             "payments": self._fetchall(
                 """
-                SELECT students.student_code, payments.student_email, amount_due, amount_paid, refunded_amount, status, due_date, last_action_at
+                SELECT
+                    students.student_code,
+                    payments.student_email,
+                    payments.amount_due,
+                    payments.amount_paid,
+                    payments.refunded_amount,
+                    payments.status,
+                    payments.due_date,
+                    payments.last_action_at
                 FROM payments
                 LEFT JOIN students ON students.email = payments.student_email
-                ORDER BY amount_due DESC, due_date ASC
+                ORDER BY payments.amount_due DESC, payments.due_date ASC
                 LIMIT 8
                 """
             ),
@@ -814,10 +822,16 @@ class Database:
             ),
             "refunds": self._fetchall(
                 """
-                SELECT students.student_code, refund_ledger.student_email, amount, currency, status, created_at
+                SELECT
+                    students.student_code,
+                    refund_ledger.student_email,
+                    refund_ledger.amount,
+                    refund_ledger.currency,
+                    refund_ledger.status,
+                    refund_ledger.created_at
                 FROM refund_ledger
                 LEFT JOIN students ON students.email = refund_ledger.student_email
-                ORDER BY id DESC
+                ORDER BY refund_ledger.id DESC
                 LIMIT 8
                 """
             ),
