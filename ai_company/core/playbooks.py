@@ -219,7 +219,8 @@ class OperationalPlaybooks:
             note="Refund workflow started by Accounts automation.",
         )
 
-        subject = f"Refund initiated for {candidate['program']}"
+        student_label = f"{candidate['name']} ({candidate.get('student_code') or 'no-code'})"
+        subject = f"Refund initiated for {candidate['program']} - {student_label}"
         ai_summary = self._clean_ai_summary(
             ai_response,
             "Your refund request has been approved and moved into processing.",
@@ -267,19 +268,19 @@ class OperationalPlaybooks:
 
         return {
             "summary": (
-                f"Initiated a refund of INR {refund_amount:,} for {candidate['name']} and "
+                f"Initiated a refund of INR {refund_amount:,} for {student_label} and "
                 f"{'sent' if delivery['status'] == 'sent' else 'queued'} the learner notification email."
             ),
             "events": [
                 {
                     "actor": "Accounts Automation",
                     "stage": "refund",
-                    "message": f"Refund of INR {refund_amount:,} recorded for {candidate['email']}.",
+                    "message": f"Refund of INR {refund_amount:,} recorded for {student_label} at {candidate['email']}.",
                 },
                 {
                     "actor": "Email Outbox",
                     "stage": "email_outbox",
-                    "message": f"Refund notification email {delivery['status']} for {candidate['email']}.",
+                    "message": f"Refund notification email {delivery['status']} for {student_label} at {candidate['email']}.",
                 },
             ],
         }

@@ -7,6 +7,7 @@ Supports:
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import ssl
 from datetime import datetime, timedelta
@@ -143,6 +144,7 @@ class Database:
                 """
                 CREATE TABLE IF NOT EXISTS students (
                 id BIGSERIAL PRIMARY KEY,
+                student_code TEXT DEFAULT '',
                 name TEXT NOT NULL,
                 email TEXT NOT NULL,
                 program TEXT NOT NULL,
@@ -271,6 +273,7 @@ class Database:
                     for statement in statements:
                         cursor.execute(statement)
                     cursor.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_amount INTEGER DEFAULT 0")
+                    cursor.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS student_code TEXT DEFAULT ''")
                     self._conn.commit()
                 except Exception:
                     self._conn.rollback()
@@ -307,6 +310,7 @@ class Database:
 
         CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_code TEXT DEFAULT '',
             name TEXT NOT NULL,
             email TEXT NOT NULL,
             program TEXT NOT NULL,
@@ -426,6 +430,10 @@ class Database:
                 self._conn.execute("ALTER TABLE payments ADD COLUMN refunded_amount INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
+            try:
+                self._conn.execute("ALTER TABLE students ADD COLUMN student_code TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
             self._conn.commit()
 
     def seed_if_empty(self) -> None:
@@ -464,26 +472,26 @@ class Database:
         )
 
         student_rows = [
-            ("Nikita Rao", "nikita@masai.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 88, 0, "low", "Strong assignment completion."),
-            ("Karan Patel", "karan@masai.com", "Data Analytics", "DA-MUM-APR", "Mumbai", "active", 76, 15000, "medium", "Delayed second installment."),
-            ("Meera Nair", "meera@masai.com", "Backend Development", "BE-DEL-MAY", "Delhi", "onboarding", 0, 30000, "medium", "Requested flexible payment structure."),
-            ("Rahul S", "rahul@masai.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 62, 25000, "high", "Attendance dropped after sprint 2."),
-            ("Ananya Das", "huzaifasheikh7860123@gmail.com", "Product Design", "PD-BLR-MAY", "Bangalore", "refund_requested", 0, 45000, "high", "Requested refund after deferral."),
+            ("s101", "Rahul", "rahulajay34@gmail.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 62, 25000, "high", "Attendance dropped after sprint 2."),
+            ("s102", "Suman", "suman.poojary2006@gmail.com", "Data Analytics", "DA-MUM-APR", "Mumbai", "refund_requested", 0, 0, "medium", "Requested refund after financial-plan reconsideration."),
+            ("s103", "Huzaifa", "huzaifasheikh7860123@gmail.com", "Product Design", "PD-BLR-MAY", "Bangalore", "active", 74, 0, "low", "Recently completed onboarding and payment confirmation."),
+            ("s104", "Nikita Rao", "nikita@masai.com", "Full Stack Web Development", "FSW-BLR-APR", "Bangalore", "active", 88, 0, "low", "Strong assignment completion."),
+            ("s105", "Meera Nair", "meera@masai.com", "Backend Development", "BE-DEL-MAY", "Delhi", "onboarding", 0, 30000, "medium", "Requested flexible payment structure."),
         ]
         self._executemany(
             """
-            INSERT INTO students (name, email, program, cohort_code, city, status, attendance_pct, fees_due, risk_level, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO students (student_code, name, email, program, cohort_code, city, status, attendance_pct, fees_due, risk_level, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             student_rows,
         )
 
         payment_rows = [
+            ("rahulajay34@gmail.com", 25000, 95000, "overdue", "2026-04-03", (now - timedelta(days=4)).isoformat(timespec="seconds") + "Z", "Needs escalation.", 0),
+            ("suman.poojary2006@gmail.com", 0, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review.", 0),
+            ("huzaifasheikh7860123@gmail.com", 0, 120000, "paid", "2026-04-10", utc_now(), "Full fee received and enrollment confirmed.", 0),
             ("nikita@masai.com", 0, 120000, "paid", "2026-04-10", utc_now(), "All installments cleared.", 0),
-            ("karan@masai.com", 15000, 105000, "overdue", "2026-04-06", (now - timedelta(days=3)).isoformat(timespec="seconds") + "Z", "Reminder sent once.", 0),
             ("meera@masai.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement.", 0),
-            ("rahul@masai.com", 25000, 95000, "overdue", "2026-04-03", (now - timedelta(days=4)).isoformat(timespec="seconds") + "Z", "Needs escalation.", 0),
-            ("huzaifasheikh7860123@gmail.com", 45000, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review.", 0),
         ]
         self._executemany(
             """
@@ -521,26 +529,123 @@ class Database:
         )
 
     def apply_demo_contact_overrides(self) -> None:
-        """Replace placeholder/demo inboxes with the live demo inboxes requested by the user."""
-        overrides = [
+        """Keep the demo roster stable so tasks can target learners by student code."""
+        lead_overrides = [
             ("Aarav Shah", "suman.poojary2006@gmail.com"),
             ("Kabir Jain", "rahulajay34@gmail.com"),
         ]
-        for name, email in overrides:
+        for name, email in lead_overrides:
             self._execute("UPDATE leads SET email = ? WHERE name = ?", (email, name))
 
-        self._execute(
-            "UPDATE students SET email = ? WHERE name = ?",
-            ("huzaifasheikh7860123@gmail.com", "Ananya Das"),
-        )
-        self._execute(
-            """
-            UPDATE payments
-            SET student_email = ?
-            WHERE student_email = ? OR student_email = ?
-            """,
-            ("huzaifasheikh7860123@gmail.com", "ananya@masai.com", "huzaifasheikh7860123@gmail.com"),
-        )
+        student_directory = [
+            {
+                "student_code": "s101",
+                "name": "Rahul",
+                "email": "rahulajay34@gmail.com",
+                "aliases": ("Rahul S", "Rahul", "Rahul Ajay"),
+                "emails": ("rahul@masai.com", "rahulajay34@gmail.com"),
+                "status": "active",
+                "fees_due": 25000,
+                "risk_level": "high",
+                "payment": {"amount_due": 25000, "amount_paid": 95000, "status": "overdue", "note": "Needs escalation."},
+            },
+            {
+                "student_code": "s102",
+                "name": "Suman",
+                "email": "suman.poojary2006@gmail.com",
+                "aliases": ("Karan Patel", "Suman", "Suman Poojary"),
+                "emails": ("karan@masai.com", "suman.poojary2006@gmail.com"),
+                "status": "refund_requested",
+                "fees_due": 0,
+                "risk_level": "medium",
+                "payment": {"amount_due": 0, "amount_paid": 45000, "status": "refund_review", "note": "Refund request awaiting accounts review."},
+            },
+            {
+                "student_code": "s103",
+                "name": "Huzaifa",
+                "email": "huzaifasheikh7860123@gmail.com",
+                "aliases": ("Ananya Das", "Huzaifa", "Huzaifa Sheikh"),
+                "emails": ("ananya@masai.com", "huzaifasheikh7860123@gmail.com"),
+                "status": "active",
+                "fees_due": 0,
+                "risk_level": "low",
+                "payment": {"amount_due": 0, "amount_paid": 120000, "status": "paid", "note": "Full fee received and enrollment confirmed."},
+            },
+            {
+                "student_code": "s104",
+                "name": "Nikita Rao",
+                "email": "nikita@masai.com",
+                "aliases": ("Nikita Rao",),
+                "emails": ("nikita@masai.com",),
+                "status": "active",
+                "fees_due": 0,
+                "risk_level": "low",
+                "payment": {"amount_due": 0, "amount_paid": 120000, "status": "paid", "note": "All installments cleared."},
+            },
+            {
+                "student_code": "s105",
+                "name": "Meera Nair",
+                "email": "meera@masai.com",
+                "aliases": ("Meera Nair",),
+                "emails": ("meera@masai.com",),
+                "status": "onboarding",
+                "fees_due": 30000,
+                "risk_level": "medium",
+                "payment": {"amount_due": 30000, "amount_paid": 60000, "status": "partial", "note": "Awaiting employer reimbursement."},
+            },
+        ]
+
+        for student in student_directory:
+            alias_placeholders = ",".join("?" for _ in student["aliases"])
+            email_placeholders = ",".join("?" for _ in student["emails"])
+            row = self._fetchone(
+                f"""
+                SELECT id
+                FROM students
+                WHERE student_code = ?
+                   OR name IN ({alias_placeholders})
+                   OR email IN ({email_placeholders})
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (student["student_code"], *student["aliases"], *student["emails"]),
+            )
+            if not row:
+                continue
+
+            self._execute(
+                """
+                UPDATE students
+                SET student_code = ?, name = ?, email = ?, status = ?, fees_due = ?, risk_level = ?
+                WHERE id = ?
+                """,
+                (
+                    student["student_code"],
+                    student["name"],
+                    student["email"],
+                    student["status"],
+                    student["fees_due"],
+                    student["risk_level"],
+                    row["id"],
+                ),
+            )
+
+            payment = student["payment"]
+            self._execute(
+                f"""
+                UPDATE payments
+                SET student_email = ?, amount_due = ?, amount_paid = ?, status = ?, notes = ?
+                WHERE student_email IN ({email_placeholders})
+                """,
+                (
+                    student["email"],
+                    payment["amount_due"],
+                    payment["amount_paid"],
+                    payment["status"],
+                    payment["note"],
+                    *student["emails"],
+                ),
+            )
 
     def save_task(self, task: Dict[str, Any]) -> None:
         """Insert or update one task."""
@@ -664,7 +769,7 @@ class Database:
             ),
             "students": self._fetchall(
                 """
-                SELECT name, program, cohort_code, status, attendance_pct, fees_due, risk_level
+                SELECT student_code, name, program, cohort_code, status, attendance_pct, fees_due, risk_level
                 FROM students
                 ORDER BY
                   CASE risk_level WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
@@ -674,8 +779,9 @@ class Database:
             ),
             "payments": self._fetchall(
                 """
-                SELECT student_email, amount_due, amount_paid, refunded_amount, status, due_date, last_action_at
+                SELECT students.student_code, payments.student_email, amount_due, amount_paid, refunded_amount, status, due_date, last_action_at
                 FROM payments
+                LEFT JOIN students ON students.email = payments.student_email
                 ORDER BY amount_due DESC, due_date ASC
                 LIMIT 8
                 """
@@ -708,8 +814,9 @@ class Database:
             ),
             "refunds": self._fetchall(
                 """
-                SELECT student_email, amount, currency, status, created_at
+                SELECT students.student_code, refund_ledger.student_email, amount, currency, status, created_at
                 FROM refund_ledger
+                LEFT JOIN students ON students.email = refund_ledger.student_email
                 ORDER BY id DESC
                 LIMIT 8
                 """
@@ -770,10 +877,13 @@ class Database:
         )
 
     def find_refund_candidate(self, task_request: str) -> Optional[Dict[str, Any]]:
+        lowered = task_request.lower()
+        code_match = re.search(r"\b(s\d{3})\b", lowered)
         rows = self._fetchall(
             """
             SELECT
                 students.id AS student_id,
+                students.student_code,
                 students.name,
                 students.email,
                 students.program,
@@ -791,7 +901,12 @@ class Database:
                 payments.amount_paid DESC
             """
         )
-        lowered = task_request.lower()
+        if code_match:
+            requested_code = code_match.group(1)
+            for row in rows:
+                if (row.get("student_code") or "").lower() == requested_code:
+                    return row
+
         for row in rows:
             if row["email"].lower() in lowered or row["name"].lower() in lowered:
                 return row
