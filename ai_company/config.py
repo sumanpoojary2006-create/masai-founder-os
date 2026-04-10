@@ -41,6 +41,14 @@ OPENROUTER_MODEL = "openrouter/free"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "") or os.getenv("RENDER_POSTGRES_INTERNAL_URL", "")
 DATABASE_PATH = os.getenv("AI_COMPANY_DB_PATH", "masai_founder_os.db")
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", APP_NAME)
+SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in {"1", "true", "yes", "on"}
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").lower() in {"1", "true", "yes", "on"}
 
 REQUEST_TIMEOUT = 45
 MAX_RETRIES = 3

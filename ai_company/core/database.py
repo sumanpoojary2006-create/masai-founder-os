@@ -219,11 +219,40 @@ class Database:
                 timestamp TEXT NOT NULL
             )
                 """,
+                """
+                CREATE TABLE IF NOT EXISTS email_outbox (
+                id BIGSERIAL PRIMARY KEY,
+                task_id TEXT,
+                department TEXT NOT NULL,
+                recipient_name TEXT NOT NULL,
+                recipient_email TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                body TEXT NOT NULL,
+                status TEXT NOT NULL,
+                delivery_note TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                sent_at TEXT DEFAULT ''
+            )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS refund_ledger (
+                id BIGSERIAL PRIMARY KEY,
+                payment_id BIGINT NOT NULL,
+                student_email TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                currency TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                note TEXT DEFAULT '',
+                created_at TEXT NOT NULL
+            )
+                """,
             ]
             with self._lock:
                 cursor = self._conn.cursor()
                 for statement in statements:
                     cursor.execute(statement)
+                cursor.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_amount INTEGER DEFAULT 0")
                 self._conn.commit()
             return
 
@@ -343,9 +372,39 @@ class Database:
             route_reason TEXT,
             timestamp TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS email_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            department TEXT NOT NULL,
+            recipient_name TEXT NOT NULL,
+            recipient_email TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            status TEXT NOT NULL,
+            delivery_note TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            sent_at TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS refund_ledger (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payment_id INTEGER NOT NULL,
+            student_email TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            currency TEXT NOT NULL,
+            status TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+        );
         """
         with self._lock:
             self._conn.executescript(schema)
+            try:
+                self._conn.execute("ALTER TABLE payments ADD COLUMN refunded_amount INTEGER DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
             self._conn.commit()
 
     def seed_if_empty(self) -> None:
@@ -399,16 +458,16 @@ class Database:
         )
 
         payment_rows = [
-            ("nikita@masai.com", 0, 120000, "paid", "2026-04-10", utc_now(), "All installments cleared."),
-            ("karan@masai.com", 15000, 105000, "overdue", "2026-04-06", (now - timedelta(days=3)).isoformat(timespec="seconds") + "Z", "Reminder sent once."),
-            ("meera@masai.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement."),
-            ("rahul@masai.com", 25000, 95000, "overdue", "2026-04-03", (now - timedelta(days=4)).isoformat(timespec="seconds") + "Z", "Needs escalation."),
-            ("ananya@masai.com", 45000, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review."),
+            ("nikita@masai.com", 0, 120000, "paid", "2026-04-10", utc_now(), "All installments cleared.", 0),
+            ("karan@masai.com", 15000, 105000, "overdue", "2026-04-06", (now - timedelta(days=3)).isoformat(timespec="seconds") + "Z", "Reminder sent once.", 0),
+            ("meera@masai.com", 30000, 60000, "partial", "2026-04-14", (now - timedelta(days=1)).isoformat(timespec="seconds") + "Z", "Awaiting employer reimbursement.", 0),
+            ("rahul@masai.com", 25000, 95000, "overdue", "2026-04-03", (now - timedelta(days=4)).isoformat(timespec="seconds") + "Z", "Needs escalation.", 0),
+            ("ananya@masai.com", 45000, 45000, "refund_review", "2026-04-12", utc_now(), "Refund request awaiting accounts review.", 0),
         ]
         self._executemany(
             """
-            INSERT INTO payments (student_email, amount_due, amount_paid, status, due_date, last_action_at, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO payments (student_email, amount_due, amount_paid, status, due_date, last_action_at, notes, refunded_amount)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             payment_rows,
         )
@@ -572,7 +631,7 @@ class Database:
             ),
             "payments": self._fetchall(
                 """
-                SELECT student_email, amount_due, amount_paid, status, due_date, last_action_at
+                SELECT student_email, amount_due, amount_paid, refunded_amount, status, due_date, last_action_at
                 FROM payments
                 ORDER BY amount_due DESC, due_date ASC
                 LIMIT 8
@@ -596,11 +655,146 @@ class Database:
                 LIMIT 8
                 """
             ),
+            "emails": self._fetchall(
+                """
+                SELECT recipient_email, subject, status, department, created_at, sent_at
+                FROM email_outbox
+                ORDER BY id DESC
+                LIMIT 8
+                """
+            ),
+            "refunds": self._fetchall(
+                """
+                SELECT student_email, amount, currency, status, created_at
+                FROM refund_ledger
+                ORDER BY id DESC
+                LIMIT 8
+                """
+            ),
         }
 
     def _append_note(self, existing: str, addition: str) -> str:
         prefix = f"[{utc_now()}] {addition}"
         return f"{existing}\n{prefix}".strip() if existing else prefix
+
+    def find_webinar_leads(self, city: str = "", limit: int = 5) -> List[Dict[str, Any]]:
+        return self._fetchall(
+            """
+            SELECT id, name, email, city, program, status, source, notes, score
+            FROM leads
+            WHERE lower(source) LIKE '%webinar%'
+              AND (? = '' OR city = ?)
+              AND status IN ('new', 'follow_up_due', 'counseled', 'application_started')
+            ORDER BY score DESC, id ASC
+            LIMIT ?
+            """,
+            (city, city, limit),
+        )
+
+    def mark_lead_follow_up(self, lead_id: int, note: str, status: str) -> None:
+        lead = self._fetchone("SELECT notes FROM leads WHERE id = ?", (lead_id,))
+        existing_notes = lead["notes"] if lead else ""
+        self._execute(
+            """
+            UPDATE leads
+            SET status = ?, last_contacted_at = ?, notes = ?
+            WHERE id = ?
+            """,
+            (status, utc_now(), self._append_note(existing_notes, note), lead_id),
+        )
+
+    def add_email_outbox_entry(
+        self,
+        task_id: str,
+        department: str,
+        recipient_name: str,
+        recipient_email: str,
+        subject: str,
+        body: str,
+        status: str,
+        delivery_note: str,
+        sent_at: str = "",
+    ) -> None:
+        self._execute(
+            """
+            INSERT INTO email_outbox (
+                task_id, department, recipient_name, recipient_email, subject, body,
+                status, delivery_note, created_at, sent_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (task_id, department, recipient_name, recipient_email, subject, body, status, delivery_note, utc_now(), sent_at),
+        )
+
+    def find_refund_candidate(self, task_request: str) -> Optional[Dict[str, Any]]:
+        rows = self._fetchall(
+            """
+            SELECT
+                students.id AS student_id,
+                students.name,
+                students.email,
+                students.program,
+                students.status AS student_status,
+                payments.id AS payment_id,
+                payments.amount_due,
+                payments.amount_paid,
+                payments.refunded_amount,
+                payments.status AS payment_status
+            FROM students
+            JOIN payments ON payments.student_email = students.email
+            ORDER BY
+                CASE students.status WHEN 'refund_requested' THEN 1 ELSE 2 END,
+                CASE payments.status WHEN 'refund_review' THEN 1 WHEN 'partial' THEN 2 ELSE 3 END,
+                payments.amount_paid DESC
+            """
+        )
+        lowered = task_request.lower()
+        for row in rows:
+            if row["email"].lower() in lowered or row["name"].lower() in lowered:
+                return row
+        return rows[0] if rows else None
+
+    def apply_refund(self, payment_id: int, student_email: str, student_id: int, amount: int, note: str) -> None:
+        payment = self._fetchone("SELECT amount_paid, refunded_amount, notes FROM payments WHERE id = ?", (payment_id,))
+        if not payment:
+            return
+        updated_paid = max(0, int(payment["amount_paid"]) - amount)
+        updated_refunded = int(payment.get("refunded_amount") or 0) + amount
+        self._execute(
+            """
+            UPDATE payments
+            SET amount_paid = ?, refunded_amount = ?, status = ?, last_action_at = ?, notes = ?
+            WHERE id = ?
+            """,
+            (updated_paid, updated_refunded, "refund_initiated", utc_now(), self._append_note(payment.get("notes", ""), note), payment_id),
+        )
+        student = self._fetchone("SELECT notes FROM students WHERE id = ?", (student_id,))
+        student_notes = student["notes"] if student else ""
+        self._execute(
+            """
+            UPDATE students
+            SET status = ?, notes = ?
+            WHERE id = ?
+            """,
+            ("refund_initiated", self._append_note(student_notes, f"Refund of INR {amount:,} initiated."), student_id),
+        )
+
+    def add_refund_ledger_entry(
+        self,
+        payment_id: int,
+        student_email: str,
+        amount: int,
+        status: str,
+        reason: str,
+        note: str,
+    ) -> None:
+        self._execute(
+            """
+            INSERT INTO refund_ledger (payment_id, student_email, amount, currency, status, reason, note, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (payment_id, student_email, amount, "INR", status, reason, note, utc_now()),
+        )
 
     def apply_department_action(self, department: str, task_request: str, ai_response: str) -> str:
         lowered = task_request.lower()

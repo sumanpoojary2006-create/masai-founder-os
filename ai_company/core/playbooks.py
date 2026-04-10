@@ -1,0 +1,195 @@
+"""Practical operational playbooks that execute real business actions."""
+
+from __future__ import annotations
+
+import re
+from typing import Dict, List, Optional
+
+try:
+    from ai_company.core.communications import EmailService
+    from ai_company.core.database import Database
+except ImportError:
+    from core.communications import EmailService
+    from core.database import Database
+
+
+class OperationalPlaybooks:
+    """Execute deterministic business workflows after department reasoning."""
+
+    def __init__(self, db: Database, email_service: Optional[EmailService] = None) -> None:
+        self.db = db
+        self.email_service = email_service or EmailService()
+
+    def execute(self, department: str, task_request: str, ai_response: str, task_id: str) -> Dict[str, object]:
+        """Run a concrete workflow when the request matches a supported pattern."""
+        if self.supports(department, task_request):
+            lowered = task_request.lower()
+        else:
+            return {
+                "summary": self.db.apply_department_action(department, task_request, ai_response),
+                "events": [],
+            }
+
+        if department == "sales" and "webinar" in lowered and any(
+            word in lowered for word in ("email", "mail", "follow-up", "follow up", "reach out", "send")
+        ):
+            return self._run_webinar_follow_up(task_request, ai_response, task_id)
+        if department == "accounts" and "refund" in lowered:
+            return self._run_refund_initiation(task_request, ai_response, task_id)
+
+        return {"summary": self.db.apply_department_action(department, task_request, ai_response), "events": []}
+
+    def supports(self, department: str, task_request: str) -> bool:
+        """Return whether a deterministic practical playbook exists for this request."""
+        lowered = task_request.lower()
+        return (
+            department == "sales"
+            and "webinar" in lowered
+            and any(word in lowered for word in ("email", "mail", "follow-up", "follow up", "reach out", "send"))
+        ) or (department == "accounts" and "refund" in lowered)
+
+    def _extract_city(self, task_request: str) -> str:
+        lowered = task_request.lower()
+        for city in ("bangalore", "mumbai", "delhi", "chennai"):
+            if city in lowered:
+                return city.title()
+        return ""
+
+    def _extract_amount(self, task_request: str) -> Optional[int]:
+        match = re.search(r"(?:rs\.?|inr|₹)?\s*([0-9][0-9,]{2,})", task_request, re.IGNORECASE)
+        if not match:
+            return None
+        return int(match.group(1).replace(",", ""))
+
+    def _run_webinar_follow_up(self, task_request: str, ai_response: str, task_id: str) -> Dict[str, object]:
+        city = self._extract_city(task_request)
+        leads = self.db.find_webinar_leads(city=city, limit=5)
+        if not leads:
+            return {"summary": "No webinar leads matched the request, so no email campaign was executed.", "events": []}
+
+        sent_count = 0
+        queued_count = 0
+        failed_count = 0
+
+        for lead in leads:
+            subject = f"Next step for {lead['program']} at Masai"
+            body = (
+                f"Hi {lead['name']},\n\n"
+                f"Thanks for attending the Masai webinar. Based on your interest in {lead['program']}, "
+                f"we wanted to share the clearest next step for you.\n\n"
+                f"{ai_response[:420].strip()}\n\n"
+                "If you'd like, reply to this email and our team will help you finish the application process.\n\n"
+                "Best,\nMasai Admissions Team"
+            )
+            delivery = self.email_service.deliver(lead["email"], subject, body)
+            self.db.add_email_outbox_entry(
+                task_id=task_id,
+                department="sales",
+                recipient_name=lead["name"],
+                recipient_email=lead["email"],
+                subject=subject,
+                body=body,
+                status=delivery["status"],
+                delivery_note=delivery["delivery_note"],
+                sent_at=delivery["sent_at"],
+            )
+            self.db.mark_lead_follow_up(
+                lead_id=lead["id"],
+                note=f"Webinar follow-up email {delivery['status']} for {lead['program']}.",
+                status="outreach_sent",
+            )
+
+            if delivery["status"] == "sent":
+                sent_count += 1
+            elif delivery["status"] == "failed":
+                failed_count += 1
+            else:
+                queued_count += 1
+
+        return {
+            "summary": (
+                f"Executed webinar outreach for {len(leads)} leads"
+                f"{f' in {city}' if city else ''}. "
+                f"Emails: {sent_count} sent, {queued_count} queued, {failed_count} failed."
+            ),
+            "events": [
+                {
+                    "actor": "Sales Automation",
+                    "stage": "automation",
+                    "message": f"Processed {len(leads)} webinar leads and created outbound follow-up emails.",
+                },
+                {
+                    "actor": "Email Outbox",
+                    "stage": "email_outbox",
+                    "message": f"Email outcomes: {sent_count} sent, {queued_count} queued, {failed_count} failed.",
+                },
+            ],
+        }
+
+    def _run_refund_initiation(self, task_request: str, ai_response: str, task_id: str) -> Dict[str, object]:
+        candidate = self.db.find_refund_candidate(task_request)
+        if not candidate:
+            return {"summary": "No matching learner/payment was found for refund processing.", "events": []}
+
+        refund_amount = self._extract_amount(task_request) or int(candidate["amount_paid"])
+        refund_amount = max(0, min(refund_amount, int(candidate["amount_paid"])))
+        if refund_amount <= 0:
+            return {"summary": "Refund could not be initiated because the learner has no refundable paid amount.", "events": []}
+
+        self.db.apply_refund(
+            payment_id=candidate["payment_id"],
+            student_email=candidate["email"],
+            student_id=candidate["student_id"],
+            amount=refund_amount,
+            note=f"Refund initiated from founder task. {ai_response[:140]}",
+        )
+        self.db.add_refund_ledger_entry(
+            payment_id=candidate["payment_id"],
+            student_email=candidate["email"],
+            amount=refund_amount,
+            status="initiated",
+            reason=task_request[:180],
+            note="Refund workflow started by Accounts automation.",
+        )
+
+        subject = f"Refund initiated for {candidate['program']}"
+        body = (
+            f"Hi {candidate['name']},\n\n"
+            f"We have initiated your refund for INR {refund_amount:,}. "
+            "Our accounts team has updated the payment record and the transfer is now in progress.\n\n"
+            "Here is the latest note in simple language:\n"
+            f"{ai_response[:420].strip()}\n\n"
+            "If you need the transaction reference, reply to this email and we will share it.\n\n"
+            "Best,\nMasai Accounts Team"
+        )
+        delivery = self.email_service.deliver(candidate["email"], subject, body)
+        self.db.add_email_outbox_entry(
+            task_id=task_id,
+            department="accounts",
+            recipient_name=candidate["name"],
+            recipient_email=candidate["email"],
+            subject=subject,
+            body=body,
+            status=delivery["status"],
+            delivery_note=delivery["delivery_note"],
+            sent_at=delivery["sent_at"],
+        )
+
+        return {
+            "summary": (
+                f"Initiated a refund of INR {refund_amount:,} for {candidate['name']} and "
+                f"{'sent' if delivery['status'] == 'sent' else 'queued'} the learner notification email."
+            ),
+            "events": [
+                {
+                    "actor": "Accounts Automation",
+                    "stage": "refund",
+                    "message": f"Refund of INR {refund_amount:,} recorded for {candidate['email']}.",
+                },
+                {
+                    "actor": "Email Outbox",
+                    "stage": "email_outbox",
+                    "message": f"Refund notification email {delivery['status']} for {candidate['email']}.",
+                },
+            ],
+        }

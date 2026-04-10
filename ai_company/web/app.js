@@ -4,6 +4,7 @@ const state = {
   departments: [],
   tasks: [],
   activity: [],
+  records: {},
   selectedTaskId: null,
   pollHandle: null,
 };
@@ -45,6 +46,8 @@ const els = {
   taskRequest: document.getElementById("task-request"),
   taskPriority: document.getElementById("task-priority"),
   taskDepartment: document.getElementById("task-department"),
+  emailRecords: document.getElementById("records-emails"),
+  refundRecords: document.getElementById("records-refunds"),
 };
 
 function escapeHtml(value = "") {
@@ -278,18 +281,61 @@ function renderActivity() {
     .join("");
 }
 
+function renderRecordList(element, records, fields) {
+  if (!element) {
+    return;
+  }
+  if (!records?.length) {
+    element.innerHTML = `<div class="empty-state">No records available yet.</div>`;
+    return;
+  }
+
+  element.innerHTML = records
+    .map((record) => {
+      const rows = fields
+        .map(
+          (field) => `
+            <div class="record-row">
+              <span class="record-key">${escapeHtml(field.label)}</span>
+              <span class="record-value">${escapeHtml(record[field.key] ?? "-")}</span>
+            </div>
+          `
+        )
+        .join("");
+      return `<article class="record-card">${rows}</article>`;
+    })
+    .join("");
+}
+
+function renderOperationalArtifacts() {
+  renderRecordList(els.emailRecords, state.records.emails, [
+    { key: "recipient_email", label: "Recipient" },
+    { key: "status", label: "Status" },
+    { key: "department", label: "Team" },
+    { key: "subject", label: "Subject" },
+  ]);
+  renderRecordList(els.refundRecords, state.records.refunds, [
+    { key: "student_email", label: "Student" },
+    { key: "amount", label: "Amount" },
+    { key: "currency", label: "Currency" },
+    { key: "status", label: "Status" },
+  ]);
+}
+
 function applyState(payload) {
   state.company = payload.company;
   state.summary = payload.summary;
   state.departments = payload.departments || [];
   state.tasks = payload.tasks || [];
   state.activity = payload.activity || [];
+  state.records = payload.records || {};
 
   renderSummary();
   renderDepartments();
   renderTaskBoard();
   renderTaskDetail();
   renderActivity();
+  renderOperationalArtifacts();
 }
 
 async function fetchState() {

@@ -30,6 +30,15 @@ Examples of real data changes:
 - `Accounts` updates payment and refund workflow state.
 - `Tech` updates incident ownership and status.
 
+## Practical Automations
+
+The app now supports concrete operational playbooks, not just advisory responses:
+
+- `Sales webinar follow-up`: selects matching webinar leads, creates real outbox emails, updates lead outreach status, and sends the emails if SMTP is configured
+- `Accounts refund initiation`: updates payment records, writes a refund ledger entry, changes the learner status, creates a learner notification email, and sends it if SMTP is configured
+
+If SMTP credentials are not configured, the app still completes the workflow and stores the email in the outbox as `queued`.
+
 ## Departments
 
 - `Sales`
@@ -181,6 +190,7 @@ AI_COMPANY_PORT=8001 python webapp.py
 - `AI_COMPANY_PORT`: server port, defaults to `8000`
 - `AI_COMPANY_DB_PATH`: SQLite database path, defaults to `masai_founder_os.db`
 - `AI_COMPANY_WORKFLOW_DELAY`: optional UI/demo pacing for workflow transitions
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`: optional SMTP settings for real email delivery
 
 For local development, these can live in `.env.local`.
 For Render and Docker, keep using platform environment variables.

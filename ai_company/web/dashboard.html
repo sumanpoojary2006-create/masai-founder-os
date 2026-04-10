@@ -43,7 +43,7 @@
             <div class="field-grid">
               <label class="field">
                 <span>Task title</span>
-                <input id="task-title" type="text" placeholder="Example: Refund escalation for cancelled learner" />
+                <input id="task-title" type="text" placeholder="Example: Webinar follow-up campaign for Bangalore leads" />
               </label>
               <label class="field">
                 <span>Priority</span>
@@ -72,7 +72,7 @@
               <textarea
                 id="task-request"
                 rows="5"
-                placeholder="Describe the real business problem the CEO should route across Masai."
+                placeholder="Examples: Send webinar follow-up emails to Bangalore leads who have not applied yet. Initiate a refund of INR 15000 for Ananya Das and notify the learner."
               ></textarea>
             </label>
 
@@ -139,6 +139,25 @@
             </div>
           </div>
           <div id="activity-list" class="activity-list"></div>
+        </section>
+
+        <section class="panel activity-panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Operational Artifacts</p>
+              <h2>Emails and refunds created by the system</h2>
+            </div>
+          </div>
+          <div class="record-grid">
+            <div class="record-panel">
+              <h3 class="subheading">Email Outbox</h3>
+              <div id="records-emails" class="record-list"></div>
+            </div>
+            <div class="record-panel">
+              <h3 class="subheading">Refund Ledger</h3>
+              <div id="records-refunds" class="record-list"></div>
+            </div>
+          </div>
         </section>
       </main>
     </div>

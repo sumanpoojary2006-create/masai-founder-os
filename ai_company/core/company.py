@@ -11,13 +11,17 @@ from uuid import uuid4
 
 try:
     from ai_company.config import APP_NAME, LOGGER, WORKFLOW_STEP_DELAY_SECONDS
+    from ai_company.core.communications import EmailService
     from ai_company.core.database import Database
     from ai_company.core.memory import MemoryStore
+    from ai_company.core.playbooks import OperationalPlaybooks
     from ai_company.core.router import TaskRouter
 except ImportError:
     from config import APP_NAME, LOGGER, WORKFLOW_STEP_DELAY_SECONDS
+    from core.communications import EmailService
     from core.database import Database
     from core.memory import MemoryStore
+    from core.playbooks import OperationalPlaybooks
     from core.router import TaskRouter
 
 
@@ -51,6 +55,8 @@ class CompanyRuntime:
         self.db = Database()
         self.db.init_schema()
         self.db.seed_if_empty()
+        self.email_service = EmailService()
+        self.playbooks = OperationalPlaybooks(self.db, self.email_service)
         self.memory = MemoryStore()
         self._lock = Lock()
         self._condition = Condition(self._lock)
@@ -245,13 +251,20 @@ class CompanyRuntime:
             "404 client error",
         )
         if any(marker in response.lower() for marker in failure_markers):
-            with self._condition:
-                self._mark_failed_locked(task_id, response)
-                self.db.save_task(task)
-            return
+            if self.playbooks.supports(department, task["request"]):
+                response = (
+                    "The practical automation completed using the deterministic workflow because the "
+                    "language model response was unavailable."
+                )
+            else:
+                with self._condition:
+                    self._mark_failed_locked(task_id, response)
+                    self.db.save_task(task)
+                return
 
         cycle_seconds = perf_counter() - start_time
-        data_effect = self.db.apply_department_action(department, task["request"], response)
+        playbook_result = self.playbooks.execute(department, task["request"], response, task_id)
+        data_effect = str(playbook_result.get("summary", "No database action was applied."))
         with self._condition:
             task["status"] = "ceo_review"
             task["result"] = response
@@ -269,6 +282,13 @@ class CompanyRuntime:
                 "data_update",
                 data_effect,
             )
+            for event in playbook_result.get("events", []):
+                self._record_event_locked(
+                    task_id,
+                    str(event.get("actor", profile["label"])),
+                    str(event.get("stage", "automation")),
+                    str(event.get("message", "")),
+                )
             self.db.save_task(task)
 
         sleep(WORKFLOW_STEP_DELAY_SECONDS / 2)
