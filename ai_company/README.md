@@ -34,10 +34,10 @@ Examples of real data changes:
 
 The app now supports concrete operational playbooks, not just advisory responses:
 
-- `Sales webinar follow-up`: selects matching webinar leads, creates real outbox emails, updates lead outreach status, and sends the emails if SMTP is configured
-- `Accounts refund initiation`: updates payment records, writes a refund ledger entry, changes the learner status, creates a learner notification email, and sends it if SMTP is configured
+- `Sales webinar follow-up`: selects matching webinar leads, creates real outbox emails, updates lead outreach status, and sends the emails if Resend or SMTP is configured
+- `Accounts refund initiation`: updates payment records, writes a refund ledger entry, changes the learner status, creates a learner notification email, and sends it if Resend or SMTP is configured
 
-If SMTP credentials are not configured, the app still completes the workflow and stores the email in the outbox as `queued`.
+If no email provider is configured, the app still completes the workflow and stores the email in the outbox as `queued`.
 
 ## Departments
 
@@ -190,7 +190,33 @@ AI_COMPANY_PORT=8001 python webapp.py
 - `AI_COMPANY_PORT`: server port, defaults to `8000`
 - `AI_COMPANY_DB_PATH`: SQLite database path, defaults to `masai_founder_os.db`
 - `AI_COMPANY_WORKFLOW_DELAY`: optional UI/demo pacing for workflow transitions
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`: optional SMTP settings for real email delivery
+- `EMAIL_PROVIDER`: set to `resend` or leave empty for SMTP fallback
+- `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_FROM_NAME`: recommended way to send real emails with Resend
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`: optional SMTP fallback for real email delivery
+
+## Recommended Real Email Setup
+
+The easiest free provider for this project is Resend.
+
+What you need:
+
+1. A Resend account
+2. A Resend API key
+3. A verified sending domain
+4. A sender address on that domain, such as `admissions@yourdomain.com`
+
+Important Resend notes:
+
+- The free plan currently includes 3,000 emails/month with a daily limit of 100.
+- Resend's `resend.dev` domain is only for testing and can only send to your own email address.
+- To send real emails to students, you must verify your own domain first.
+
+Official docs:
+
+- [Resend pricing](https://resend.com/pricing)
+- [Send Email API](https://resend.com/docs/api-reference/emails)
+- [403 error using resend.dev](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain)
+- [How senders work after domain verification](https://resend.com/docs/knowledge-base/how-do-i-create-an-email-address-or-sender-in-resend)
 
 For local development, these can live in `.env.local`.
 For Render and Docker, keep using platform environment variables.

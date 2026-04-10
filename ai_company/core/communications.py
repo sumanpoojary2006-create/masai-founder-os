@@ -8,8 +8,16 @@ from datetime import datetime
 from email.message import EmailMessage
 from typing import Dict
 
+import requests
+
 try:
     from ai_company.config import (
+        EMAIL_PROVIDER,
+        REQUEST_TIMEOUT,
+        RESEND_API_KEY,
+        RESEND_API_URL,
+        RESEND_FROM_EMAIL,
+        RESEND_FROM_NAME,
         SMTP_FROM_EMAIL,
         SMTP_FROM_NAME,
         SMTP_HOST,
@@ -21,6 +29,12 @@ try:
     )
 except ImportError:
     from config import (
+        EMAIL_PROVIDER,
+        REQUEST_TIMEOUT,
+        RESEND_API_KEY,
+        RESEND_API_URL,
+        RESEND_FROM_EMAIL,
+        RESEND_FROM_NAME,
         SMTP_FROM_EMAIL,
         SMTP_FROM_NAME,
         SMTP_HOST,
@@ -36,6 +50,11 @@ class EmailService:
     """Send real emails when SMTP is configured, otherwise queue them safely."""
 
     def __init__(self) -> None:
+        self.provider = EMAIL_PROVIDER.strip().lower()
+        self.resend_api_key = RESEND_API_KEY
+        self.resend_api_url = RESEND_API_URL
+        self.resend_from_email = RESEND_FROM_EMAIL
+        self.resend_from_name = RESEND_FROM_NAME
         self.host = SMTP_HOST
         self.port = SMTP_PORT
         self.username = SMTP_USERNAME
@@ -48,6 +67,8 @@ class EmailService:
     @property
     def configured(self) -> bool:
         """Whether the service has enough configuration to attempt delivery."""
+        if self.provider == "resend":
+            return bool(self.resend_api_key and self.resend_from_email)
         return bool(self.host and self.from_email)
 
     def deliver(self, recipient_email: str, subject: str, body: str) -> Dict[str, str]:
@@ -55,9 +76,12 @@ class EmailService:
         if not self.configured:
             return {
                 "status": "queued",
-                "delivery_note": "SMTP is not configured. Email stored in outbox only.",
+                "delivery_note": "No email provider is configured. Email stored in outbox only.",
                 "sent_at": "",
             }
+
+        if self.provider == "resend":
+            return self._deliver_via_resend(recipient_email, subject, body)
 
         message = EmailMessage()
         message["From"] = f"{self.from_name} <{self.from_email}>"
@@ -85,5 +109,38 @@ class EmailService:
             return {
                 "status": "failed",
                 "delivery_note": f"SMTP delivery failed: {exc}",
+                "sent_at": "",
+            }
+
+    def _deliver_via_resend(self, recipient_email: str, subject: str, body: str) -> Dict[str, str]:
+        """Send an email through Resend's REST API."""
+        from_value = f"{self.resend_from_name} <{self.resend_from_email}>"
+        try:
+            response = requests.post(
+                self.resend_api_url,
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": from_value,
+                    "to": [recipient_email],
+                    "subject": subject,
+                    "text": body,
+                    "html": "<br>".join(body.splitlines()),
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return {
+                "status": "sent",
+                "delivery_note": f"Email delivered through Resend. Message id: {payload.get('id', '')}",
+                "sent_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            }
+        except requests.RequestException as exc:
+            return {
+                "status": "failed",
+                "delivery_note": f"Resend delivery failed: {exc}",
                 "sent_at": "",
             }
