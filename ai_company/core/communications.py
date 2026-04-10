@@ -71,23 +71,25 @@ class EmailService:
             return bool(self.resend_api_key and self.resend_from_email)
         return bool(self.host and self.from_email)
 
-    def deliver(self, recipient_email: str, subject: str, body: str) -> Dict[str, str]:
+    def deliver(self, recipient_email: str, subject: str, body: str, html_body: str = "") -> Dict[str, str]:
         """Deliver or queue one email."""
         if not self.configured:
             return {
                 "status": "queued",
                 "delivery_note": "No email provider is configured. Email stored in outbox only.",
                 "sent_at": "",
-            }
+        }
 
         if self.provider == "resend":
-            return self._deliver_via_resend(recipient_email, subject, body)
+            return self._deliver_via_resend(recipient_email, subject, body, html_body)
 
         message = EmailMessage()
         message["From"] = f"{self.from_name} <{self.from_email}>"
         message["To"] = recipient_email
         message["Subject"] = subject
         message.set_content(body)
+        if html_body:
+            message.add_alternative(html_body, subtype="html")
 
         try:
             if self.use_ssl:
@@ -112,7 +114,7 @@ class EmailService:
                 "sent_at": "",
             }
 
-    def _deliver_via_resend(self, recipient_email: str, subject: str, body: str) -> Dict[str, str]:
+    def _deliver_via_resend(self, recipient_email: str, subject: str, body: str, html_body: str = "") -> Dict[str, str]:
         """Send an email through Resend's REST API."""
         from_value = f"{self.resend_from_name} <{self.resend_from_email}>"
         try:
@@ -127,7 +129,7 @@ class EmailService:
                     "to": [recipient_email],
                     "subject": subject,
                     "text": body,
-                    "html": "<br>".join(body.splitlines()),
+                    "html": html_body or "<br>".join(body.splitlines()),
                 },
                 timeout=REQUEST_TIMEOUT,
             )

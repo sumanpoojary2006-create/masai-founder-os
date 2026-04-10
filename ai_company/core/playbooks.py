@@ -61,6 +61,49 @@ class OperationalPlaybooks:
             return None
         return int(match.group(1).replace(",", ""))
 
+    def _clean_ai_summary(self, ai_response: str, fallback: str) -> str:
+        """Strip markdown-like noise and compress the AI response into one readable sentence."""
+        cleaned = re.sub(r"[*#`_>-]+", " ", ai_response or "")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned[:240] if cleaned else fallback
+
+    def _render_email_html(self, title: str, greeting: str, intro: str, bullets: List[str], closing: str, team_name: str) -> str:
+        bullet_items = "".join(f"<li>{item}</li>" for item in bullets if item)
+        return f"""
+        <html>
+          <body style="margin:0;background:#f6f1e8;font-family:Arial,sans-serif;color:#1f2937;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 0;">
+              <tr>
+                <td align="center">
+                  <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fffdf8;border:1px solid #eadfc8;border-radius:20px;overflow:hidden;">
+                    <tr>
+                      <td style="background:#17332d;color:#f8f2e7;padding:20px 28px;">
+                        <div style="font-size:12px;letter-spacing:1.6px;text-transform:uppercase;opacity:0.78;">Masai Founder OS</div>
+                        <div style="font-size:26px;font-weight:700;line-height:1.3;margin-top:8px;">{title}</div>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:28px;">
+                        <p style="margin:0 0 16px;font-size:16px;line-height:1.7;">{greeting}</p>
+                        <p style="margin:0 0 18px;font-size:15px;line-height:1.8;">{intro}</p>
+                        <div style="background:#f4efe4;border-radius:16px;padding:18px 20px;margin:0 0 20px;">
+                          <div style="font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#866d45;margin-bottom:10px;">What happens next</div>
+                          <ul style="margin:0;padding-left:18px;line-height:1.8;">
+                            {bullet_items}
+                          </ul>
+                        </div>
+                        <p style="margin:0 0 16px;font-size:15px;line-height:1.8;">{closing}</p>
+                        <p style="margin:0;font-size:15px;line-height:1.8;">Best,<br><strong>{team_name}</strong></p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+        """.strip()
+
     def _run_webinar_follow_up(self, task_request: str, ai_response: str, task_id: str) -> Dict[str, object]:
         city = self._extract_city(task_request)
         leads = self.db.find_webinar_leads(city=city, limit=5)
@@ -73,15 +116,39 @@ class OperationalPlaybooks:
 
         for lead in leads:
             subject = f"Next step for {lead['program']} at Masai"
+            ai_summary = self._clean_ai_summary(
+                ai_response,
+                "We reviewed your webinar attendance and prepared the best next step for your application.",
+            )
+            bullets = [
+                f"Your current track of interest is {lead['program']}.",
+                "Our admissions team can help you complete the application in one guided call.",
+                "Reply to this email if you want us to reserve a counselor callback slot for you.",
+            ]
             body = (
                 f"Hi {lead['name']},\n\n"
                 f"Thanks for attending the Masai webinar. Based on your interest in {lead['program']}, "
-                f"we wanted to share the clearest next step for you.\n\n"
-                f"{ai_response[:420].strip()}\n\n"
+                "we wanted to share the clearest next step for you.\n\n"
+                f"{ai_summary}\n\n"
+                "What happens next:\n"
+                f"- {bullets[0]}\n"
+                f"- {bullets[1]}\n"
+                f"- {bullets[2]}\n\n"
                 "If you'd like, reply to this email and our team will help you finish the application process.\n\n"
                 "Best,\nMasai Admissions Team"
             )
-            delivery = self.email_service.deliver(lead["email"], subject, body)
+            html_body = self._render_email_html(
+                title=f"Next step for {lead['program']}",
+                greeting=f"Hi {lead['name']},",
+                intro=(
+                    f"Thanks for attending the Masai webinar. Based on your interest in {lead['program']}, "
+                    f"here is the clearest next step for you: {ai_summary}"
+                ),
+                bullets=bullets,
+                closing="If you'd like, reply to this email and our team will help you finish the application process.",
+                team_name="Masai Admissions Team",
+            )
+            delivery = self.email_service.deliver(lead["email"], subject, body, html_body=html_body)
             self.db.add_email_outbox_entry(
                 task_id=task_id,
                 department="sales",
@@ -153,16 +220,39 @@ class OperationalPlaybooks:
         )
 
         subject = f"Refund initiated for {candidate['program']}"
+        ai_summary = self._clean_ai_summary(
+            ai_response,
+            "Your refund request has been approved and moved into processing.",
+        )
+        bullets = [
+            f"Refund initiated amount: INR {refund_amount:,}.",
+            "The payment record has been updated in our accounts system.",
+            "Reply to this email if you want the transaction reference after processing.",
+        ]
         body = (
             f"Hi {candidate['name']},\n\n"
             f"We have initiated your refund for INR {refund_amount:,}. "
             "Our accounts team has updated the payment record and the transfer is now in progress.\n\n"
-            "Here is the latest note in simple language:\n"
-            f"{ai_response[:420].strip()}\n\n"
+            f"{ai_summary}\n\n"
+            "What happens next:\n"
+            f"- {bullets[0]}\n"
+            f"- {bullets[1]}\n"
+            f"- {bullets[2]}\n\n"
             "If you need the transaction reference, reply to this email and we will share it.\n\n"
             "Best,\nMasai Accounts Team"
         )
-        delivery = self.email_service.deliver(candidate["email"], subject, body)
+        html_body = self._render_email_html(
+            title=f"Refund initiated for {candidate['program']}",
+            greeting=f"Hi {candidate['name']},",
+            intro=(
+                f"We have initiated your refund for INR {refund_amount:,}. "
+                f"Our accounts team has updated the payment record and the transfer is now in progress. {ai_summary}"
+            ),
+            bullets=bullets,
+            closing="If you need the transaction reference, reply to this email and we will share it.",
+            team_name="Masai Accounts Team",
+        )
+        delivery = self.email_service.deliver(candidate["email"], subject, body, html_body=html_body)
         self.db.add_email_outbox_entry(
             task_id=task_id,
             department="accounts",
