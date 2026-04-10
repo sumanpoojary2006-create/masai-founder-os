@@ -86,6 +86,8 @@ class CompanyRequestHandler(BaseHTTPRequestHandler):
             "/index.html": "index.html",
             "/dashboard": "dashboard.html",
             "/dashboard.html": "dashboard.html",
+            "/completed": "completed.html",
+            "/completed.html": "completed.html",
             "/teams": "teams.html",
             "/teams.html": "teams.html",
             "/workflow": "workflow.html",
@@ -94,6 +96,7 @@ class CompanyRequestHandler(BaseHTTPRequestHandler):
         asset_map = {
             "/assets/styles.css": "styles.css",
             "/assets/app.js": "app.js",
+            "/assets/completed.js": "completed.js",
             "/assets/overview.js": "overview.js",
             "/assets/vercel-config.js": "vercel-config.js",
         }

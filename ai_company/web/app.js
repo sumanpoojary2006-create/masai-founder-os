@@ -1,12 +1,41 @@
 const state = {
-  company: null,
-  summary: null,
-  departments: [],
   tasks: [],
-  activity: [],
-  records: {},
   selectedTaskId: null,
   pollHandle: null,
+};
+
+const STAGES = [
+  { id: "triage", label: "CEO Triage" },
+  { id: "queued", label: "Queued" },
+  { id: "in_progress", label: "In Progress" },
+  { id: "ceo_review", label: "CEO Review" },
+  { id: "completed", label: "Completed" },
+];
+
+const els = {
+  liveStatus: document.getElementById("live-status"),
+  statusMessage: document.getElementById("status-message"),
+  submitButton: document.getElementById("submit-button"),
+  taskForm: document.getElementById("task-form"),
+  taskTitle: document.getElementById("task-title"),
+  taskRequest: document.getElementById("task-request"),
+  taskPriority: document.getElementById("task-priority"),
+  taskDepartment: document.getElementById("task-department"),
+  openTaskList: document.getElementById("open-task-list"),
+  assignmentContextTitle: document.getElementById("assignment-context-title"),
+  assignmentContextCopy: document.getElementById("assignment-context-copy"),
+  assignmentTeamName: document.getElementById("assignment-team-name"),
+  assignmentTeamCopy: document.getElementById("assignment-team-copy"),
+  assignmentNextTitle: document.getElementById("assignment-next-title"),
+  assignmentNextCopy: document.getElementById("assignment-next-copy"),
+  progressSteps: document.getElementById("progress-steps"),
+  detailTitle: document.getElementById("detail-title"),
+  detailDepartment: document.getElementById("detail-department"),
+  detailReason: document.getElementById("detail-reason"),
+  detailEffect: document.getElementById("detail-effect"),
+  detailResult: document.getElementById("detail-result"),
+  detailActions: document.getElementById("detail-actions"),
+  eventList: document.getElementById("event-list"),
 };
 
 function getApiBase() {
@@ -18,38 +47,6 @@ function apiUrl(path) {
   return base ? `${base}${path}` : path;
 }
 
-const STATUS_COLUMNS = [
-  { id: "triage", label: "CEO Triage" },
-  { id: "queued", label: "Queued" },
-  { id: "in_progress", label: "In Progress" },
-  { id: "ceo_review", label: "CEO Review" },
-  { id: "completed", label: "Completed / Failed" },
-];
-
-const els = {
-  summaryCards: document.getElementById("summary-cards"),
-  departmentGrid: document.getElementById("department-grid"),
-  taskColumns: document.getElementById("task-columns"),
-  activityList: document.getElementById("activity-list"),
-  eventList: document.getElementById("event-list"),
-  detailTitle: document.getElementById("detail-title"),
-  detailDepartment: document.getElementById("detail-department"),
-  detailReason: document.getElementById("detail-reason"),
-  detailEffect: document.getElementById("detail-effect"),
-  detailResult: document.getElementById("detail-result"),
-  detailActions: document.getElementById("detail-actions"),
-  statusMessage: document.getElementById("status-message"),
-  submitButton: document.getElementById("submit-button"),
-  liveStatus: document.getElementById("live-status"),
-  taskForm: document.getElementById("task-form"),
-  taskTitle: document.getElementById("task-title"),
-  taskRequest: document.getElementById("task-request"),
-  taskPriority: document.getElementById("task-priority"),
-  taskDepartment: document.getElementById("task-department"),
-  emailRecords: document.getElementById("records-emails"),
-  refundRecords: document.getElementById("records-refunds"),
-};
-
 function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -58,154 +55,111 @@ function escapeHtml(value = "") {
 }
 
 function setStatus(message) {
-  els.statusMessage.textContent = message;
+  if (els.statusMessage) {
+    els.statusMessage.textContent = message;
+  }
+}
+
+function getOpenTasks() {
+  return state.tasks.filter((task) => task.status !== "completed" && task.status !== "failed");
+}
+
+function getSelectedTask() {
+  const openTasks = getOpenTasks();
+  return openTasks.find((task) => task.id === state.selectedTaskId) || openTasks[0] || null;
 }
 
 function selectTask(taskId) {
   state.selectedTaskId = taskId;
-  renderTaskBoard();
+  renderOpenTasks();
+  renderAssignment();
   renderTaskDetail();
 }
 
-function renderSummary() {
-  if (!state.summary || !els.summaryCards) {
+function renderOpenTasks() {
+  if (!els.openTaskList) {
     return;
   }
 
-  const cards = [
-    { value: state.summary.open_tasks, label: "Open tasks" },
-    { value: state.summary.backlog_tasks, label: "Queued backlog" },
-    { value: state.summary.active_departments, label: "Active departments" },
-    { value: `${state.summary.avg_cycle_seconds || 0}s`, label: "Avg completion" },
-  ];
+  const openTasks = getOpenTasks();
+  if (!openTasks.length) {
+    els.openTaskList.innerHTML = `<div class="empty-state">No open requests right now. Submit a new one to start the flow.</div>`;
+    return;
+  }
 
-  els.summaryCards.innerHTML = cards
+  els.openTaskList.innerHTML = openTasks
     .map(
-      (card) => `
-        <div class="metric-card">
-          <span class="metric-value">${escapeHtml(card.value)}</span>
-          <span class="metric-label">${escapeHtml(card.label)}</span>
-        </div>
+      (task) => `
+        <button class="open-task-chip ${task.id === state.selectedTaskId ? "active" : ""}" data-task-id="${task.id}">
+          <span class="open-task-chip-title">${escapeHtml(task.title)}</span>
+          <span class="open-task-chip-meta">${escapeHtml(task.department_label || "CEO Triage")} • ${escapeHtml(task.status.replaceAll("_", " "))}</span>
+        </button>
       `
     )
     .join("");
+
+  els.openTaskList.querySelectorAll(".open-task-chip").forEach((chip) => {
+    chip.addEventListener("click", () => selectTask(chip.dataset.taskId));
+  });
 }
 
-function renderDepartments() {
-  if (!state.departments.length) {
-    els.departmentGrid.innerHTML = `<div class="empty-state">Departments will appear here once the company state loads.</div>`;
+function renderAssignment() {
+  const task = getSelectedTask();
+
+  if (!task) {
+    els.assignmentContextTitle.textContent = "Waiting for a request";
+    els.assignmentContextCopy.textContent = "The CEO will read the founder request and decide which team should own it.";
+    els.assignmentTeamName.textContent = "No team assigned yet";
+    els.assignmentTeamCopy.textContent = "Submit a task to see the right team pick it up.";
+    els.assignmentNextTitle.textContent = "No action yet";
+    els.assignmentNextCopy.textContent = "Once a team starts working, this card will explain what the system is doing.";
+    els.progressSteps.innerHTML = STAGES.map((stage) => `<div class="stage-step">${escapeHtml(stage.label)}</div>`).join("");
     return;
   }
 
-  els.departmentGrid.innerHTML = state.departments
-    .map((department) => {
-      const loadPercent = Math.min(
-        100,
-        Math.round(((department.active_count + department.queued_count) / Math.max(department.capacity, 1)) * 50)
-      );
-      return `
-        <article class="department-card">
-          <div class="card-row">
-            <div>
-              <h3>${escapeHtml(department.label)}</h3>
-              <p class="meta-text">${escapeHtml(department.focus)}</p>
-            </div>
-            <span class="status-pill" data-status="${department.active_count ? "in_progress" : "queued"}">
-              ${department.active_count}/${department.capacity} active
-            </span>
-          </div>
-          <div class="capacity-bar"><span style="width: ${loadPercent}%"></span></div>
-          <div class="department-stats">
-            <div>
-              <p class="summary-label">Queued</p>
-              <p class="department-stat">${department.queued_count}</p>
-            </div>
-            <div>
-              <p class="summary-label">Completed</p>
-              <p class="department-stat">${department.completed_count}</p>
-            </div>
-            <div>
-              <p class="summary-label">Failed</p>
-              <p class="department-stat">${department.failed_count}</p>
-            </div>
-            <div>
-              <p class="summary-label">Avg cycle</p>
-              <p class="department-stat">${department.avg_cycle_seconds || 0}s</p>
-            </div>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
+  els.assignmentContextTitle.textContent = task.title;
+  els.assignmentContextCopy.textContent = task.ceo_reason || "The CEO is still deciding the best department for this request.";
+  els.assignmentTeamName.textContent = task.department_label || "CEO Triage";
+  els.assignmentTeamCopy.textContent =
+    task.assignee || (task.status === "triage" ? "The CEO is reviewing the request." : "Waiting for the next available worker.");
 
-function renderTaskBoard() {
-  const tasksByStatus = Object.fromEntries(STATUS_COLUMNS.map((column) => [column.id, []]));
-  state.tasks.forEach((task) => {
-    const key = task.status === "failed" ? "completed" : task.status;
-    if (tasksByStatus[key]) {
-      tasksByStatus[key].push(task);
-    }
-  });
+  const nextCopyByStatus = {
+    triage: "The CEO is deciding the right department and priority.",
+    queued: "The task is waiting in the department queue for the next available worker.",
+    in_progress: "A department worker is actively executing the request.",
+    ceo_review: "The work is done and the CEO is doing the final quality check.",
+  };
 
-  els.taskColumns.innerHTML = STATUS_COLUMNS.map((column) => {
-    const tasks = tasksByStatus[column.id] || [];
-    const cards = tasks.length
-      ? tasks
-          .map(
-            (task) => `
-              <article class="task-card ${state.selectedTaskId === task.id ? "active" : ""}" data-task-id="${task.id}">
-                <div class="card-row">
-                  <span class="priority-pill" data-priority="${task.priority}">${task.priority}</span>
-                  <span class="status-pill" data-status="${task.status}">${task.status.replaceAll("_", " ")}</span>
-                </div>
-                <h4>${escapeHtml(task.title)}</h4>
-                <p>${escapeHtml(task.department_label || "CEO Triage")}</p>
-                <p>${escapeHtml(task.assignee || "Unassigned")}</p>
-                ${task.queue_position ? `<p>Queue position: ${task.queue_position}</p>` : ""}
-              </article>
-            `
-          )
-          .join("")
-      : `<div class="empty-state">No tasks in this stage.</div>`;
+  els.assignmentNextTitle.textContent = task.status.replaceAll("_", " ");
+  els.assignmentNextCopy.textContent = task.data_effect || nextCopyByStatus[task.status] || "The next action will appear here.";
 
-    return `
-      <section class="task-column">
-        <h3>${escapeHtml(column.label)}</h3>
-        <span class="task-column-count">${tasks.length} task(s)</span>
-        <div class="task-list">${cards}</div>
-      </section>
-    `;
+  const stageIndex = STAGES.findIndex((stage) => stage.id === task.status);
+  els.progressSteps.innerHTML = STAGES.map((stage, index) => {
+    const stateClass = index < stageIndex ? "done" : index === stageIndex ? "active" : "";
+    return `<div class="stage-step ${stateClass}">${escapeHtml(stage.label)}</div>`;
   }).join("");
-
-  document.querySelectorAll(".task-card").forEach((card) => {
-    card.addEventListener("click", () => selectTask(card.dataset.taskId));
-  });
 }
 
 function renderTaskDetail() {
-  const task = state.tasks.find((item) => item.id === state.selectedTaskId) || state.tasks[0];
+  const task = getSelectedTask();
+
   if (!task) {
-    els.detailTitle.textContent = "Choose a task to inspect its workflow";
+    els.detailTitle.textContent = "Choose an open task";
     els.detailDepartment.textContent = "No task selected";
-    els.detailReason.textContent = "No live task selected yet.";
-    if (els.detailEffect) {
-      els.detailEffect.textContent = "No database change yet.";
-    }
+    els.detailReason.textContent = "The CEO routing note will appear here.";
+    els.detailEffect.textContent = "Any actual record changes will appear here.";
     els.detailResult.textContent = "No result yet.";
     els.detailActions.innerHTML = "";
-    els.eventList.innerHTML = `<div class="empty-state">Task events will appear here once work starts.</div>`;
+    els.eventList.innerHTML = `<div class="empty-state">Live workflow events will appear here once a task starts moving.</div>`;
     return;
   }
 
   state.selectedTaskId = task.id;
   els.detailTitle.textContent = task.title;
   els.detailDepartment.textContent = task.department_label || "CEO Triage";
-  els.detailReason.textContent = task.ceo_reason || "CEO is still triaging this request.";
-  if (els.detailEffect) {
-    els.detailEffect.textContent = task.data_effect || "No database change has been applied yet.";
-  }
-  els.detailResult.textContent = task.result || task.error || "This task is still in progress.";
+  els.detailReason.textContent = task.ceo_reason || "The CEO is still writing the routing note.";
+  els.detailEffect.textContent = task.data_effect || "No direct database effect has been recorded yet.";
+  els.detailResult.textContent = task.result || task.error || "The team is still working on this request.";
 
   const priorityButtons = ["critical", "high", "normal", "low"]
     .map(
@@ -239,7 +193,7 @@ function renderTaskDetail() {
     });
   });
 
-  els.eventList.innerHTML = task.events.length
+  els.eventList.innerHTML = task.events?.length
     ? [...task.events]
         .reverse()
         .map(
@@ -258,90 +212,21 @@ function renderTaskDetail() {
     : `<div class="empty-state">This task has no events yet.</div>`;
 }
 
-function renderActivity() {
-  if (!state.activity.length) {
-    els.activityList.innerHTML = `<div class="empty-state">Live activity will appear here once tasks enter the company.</div>`;
-    return;
-  }
-
-  els.activityList.innerHTML = state.activity
-    .slice(0, 12)
-    .map(
-      (event) => `
-        <article class="activity-card">
-          <div class="card-row">
-            <h4>${escapeHtml(event.task_title)}</h4>
-            <span class="status-pill" data-status="${escapeHtml(event.stage)}">${escapeHtml(event.stage.replaceAll("_", " "))}</span>
-          </div>
-          <p class="activity-meta">${escapeHtml(event.actor)} • ${escapeHtml(event.timestamp)}</p>
-          <p>${escapeHtml(event.message)}</p>
-        </article>
-      `
-    )
-    .join("");
-}
-
-function renderRecordList(element, records, fields) {
-  if (!element) {
-    return;
-  }
-  if (!records?.length) {
-    element.innerHTML = `<div class="empty-state">No records available yet.</div>`;
-    return;
-  }
-
-  element.innerHTML = records
-    .map((record) => {
-      const rows = fields
-        .map(
-          (field) => `
-            <div class="record-row">
-              <span class="record-key">${escapeHtml(field.label)}</span>
-              <span class="record-value">${escapeHtml(record[field.key] ?? "-")}</span>
-            </div>
-          `
-        )
-        .join("");
-      return `<article class="record-card">${rows}</article>`;
-    })
-    .join("");
-}
-
-function renderOperationalArtifacts() {
-  renderRecordList(els.emailRecords, state.records.emails, [
-    { key: "recipient_email", label: "Recipient" },
-    { key: "status", label: "Status" },
-    { key: "department", label: "Team" },
-    { key: "subject", label: "Subject" },
-  ]);
-  renderRecordList(els.refundRecords, state.records.refunds, [
-    { key: "student_email", label: "Student" },
-    { key: "amount", label: "Amount" },
-    { key: "currency", label: "Currency" },
-    { key: "status", label: "Status" },
-  ]);
-}
-
 function applyState(payload) {
-  state.company = payload.company;
-  state.summary = payload.summary;
-  state.departments = payload.departments || [];
   state.tasks = payload.tasks || [];
-  state.activity = payload.activity || [];
-  state.records = payload.records || {};
-
-  renderSummary();
-  renderDepartments();
-  renderTaskBoard();
+  const openTasks = getOpenTasks();
+  if (!openTasks.find((task) => task.id === state.selectedTaskId)) {
+    state.selectedTaskId = openTasks[0]?.id || null;
+  }
+  renderOpenTasks();
+  renderAssignment();
   renderTaskDetail();
-  renderActivity();
-  renderOperationalArtifacts();
 }
 
 async function fetchState() {
   const response = await fetch(apiUrl("/api/state"));
   if (!response.ok) {
-    throw new Error("Could not fetch company state.");
+    throw new Error("Failed to fetch");
   }
   const payload = await response.json();
   applyState(payload);
@@ -351,12 +236,12 @@ async function createTask(event) {
   event.preventDefault();
   const request = els.taskRequest.value.trim();
   if (!request) {
-    setStatus("Please enter a founder request before creating a task.");
+    setStatus("Please enter a founder request before submitting.");
     return;
   }
 
   els.submitButton.disabled = true;
-  setStatus("Submitting task to the CEO inbox...");
+  setStatus("Sending request to the CEO...");
 
   try {
     const response = await fetch(apiUrl("/api/tasks"), {
@@ -378,7 +263,7 @@ async function createTask(event) {
     selectTask(payload.task.id);
     els.taskForm.reset();
     els.taskPriority.value = "normal";
-    setStatus("Task created. The CEO is triaging it now.");
+    setStatus("Request submitted. The CEO is routing it now.");
   } catch (error) {
     setStatus(error.message);
   } finally {
@@ -421,14 +306,20 @@ async function retryTask(taskId) {
 async function pollState() {
   try {
     await fetchState();
-    els.liveStatus.textContent = "Live polling every 2s";
+    if (els.liveStatus) {
+      els.liveStatus.textContent = "Live polling every 2s";
+    }
   } catch (error) {
-    els.liveStatus.textContent = "Polling interrupted";
+    if (els.liveStatus) {
+      els.liveStatus.textContent = "Polling interrupted";
+    }
     setStatus(error.message);
   }
 }
 
-els.taskForm.addEventListener("submit", createTask);
+if (els.taskForm) {
+  els.taskForm.addEventListener("submit", createTask);
+}
 
 pollState();
 state.pollHandle = window.setInterval(pollState, 2000);

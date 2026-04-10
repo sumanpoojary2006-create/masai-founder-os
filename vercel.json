@@ -16,6 +16,10 @@
       "destination": "/dashboard.html"
     },
     {
+      "source": "/completed",
+      "destination": "/completed.html"
+    },
+    {
       "source": "/assets/:path*",
       "destination": "/:path*"
     }

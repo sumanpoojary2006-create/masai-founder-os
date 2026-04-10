@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Masai Founder OS Completed Requests</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="top-nav">
+        <a class="brand" href="/">Masai Founder OS</a>
+        <div class="nav-links">
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link" href="/teams">Teams</a>
+          <a class="nav-link" href="/workflow">Workflow</a>
+          <a class="nav-link active" href="/completed">Completed</a>
+          <a class="nav-link nav-link-cta" href="/dashboard">Dashboard</a>
+        </div>
+      </nav>
+
+      <header class="page-header panel">
+        <div>
+          <p class="eyebrow">Completed Work</p>
+          <h1>All finished requests in one place.</h1>
+          <p class="hero-text">
+            Use this page to review completed and failed requests without crowding the live dashboard.
+          </p>
+        </div>
+      </header>
+
+      <main class="content-stack">
+        <section class="panel page-section">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Archive</p>
+              <h2>Completed and failed tasks</h2>
+            </div>
+            <a class="button-link secondary-link" href="/dashboard">Back to Live Dashboard</a>
+          </div>
+          <div id="completed-summary" class="completed-summary"></div>
+          <div id="completed-task-list" class="completed-task-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/vercel-config.js"></script>
+    <script src="/assets/completed.js"></script>
+  </body>
+</html>

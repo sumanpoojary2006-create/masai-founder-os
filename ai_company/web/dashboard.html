@@ -14,37 +14,39 @@
           <a class="nav-link" href="/">Home</a>
           <a class="nav-link" href="/teams">Teams</a>
           <a class="nav-link" href="/workflow">Workflow</a>
+          <a class="nav-link" href="/completed">Completed</a>
           <a class="nav-link active nav-link-cta" href="/dashboard">Dashboard</a>
         </div>
       </nav>
 
-      <header class="page-header panel">
+      <header class="panel dashboard-hero">
         <div>
-          <p class="eyebrow">Live Operations Console</p>
-          <h1>Manage real-time workload across Masai.</h1>
+          <p class="eyebrow">Founder Control Room</p>
+          <h1>Welcome, CEO.</h1>
           <p class="hero-text">
-            Use this page when you want to create new work, watch queues shift,
-            and inspect detailed task timelines.
+            Submit one request, watch the system assign the right team, and inspect the output without the old clutter.
           </p>
         </div>
-        <span class="pill" id="live-status">Polling every 2s</span>
+        <div class="dashboard-hero-actions">
+          <a class="button-link secondary-link" href="/completed">View Completed Requests</a>
+          <span class="pill" id="live-status">Polling every 2s</span>
+        </div>
       </header>
 
-      <main class="dashboard">
-        <section class="panel intake-panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">CEO Inbox</p>
-              <h2>Create a live company task</h2>
-            </div>
+      <main class="simple-dashboard">
+        <section class="panel intake-stage">
+          <div class="section-heading">
+            <p class="panel-label">CEO Inbox</p>
+            <h2>Enter your request below</h2>
           </div>
 
-          <form id="task-form" class="task-form">
-            <div class="field-grid">
-              <label class="field">
-                <span>Task title</span>
-                <input id="task-title" type="text" placeholder="Example: Webinar follow-up campaign for Bangalore leads" />
-              </label>
+          <form id="task-form" class="task-form simplified-form">
+            <label class="field">
+              <span>Task title</span>
+              <input id="task-title" type="text" placeholder="Example: Bangalore webinar follow-up for this week" />
+            </label>
+
+            <div class="field-grid field-grid-compact">
               <label class="field">
                 <span>Priority</span>
                 <select id="task-priority">
@@ -54,6 +56,7 @@
                   <option value="low">Low</option>
                 </select>
               </label>
+
               <label class="field">
                 <span>Department override</span>
                 <select id="task-department">
@@ -71,92 +74,106 @@
               <span>Founder request</span>
               <textarea
                 id="task-request"
-                rows="5"
-                placeholder="Examples: Send webinar follow-up emails to Bangalore leads who have not applied yet. Initiate a refund of INR 15000 for Ananya Das and notify the learner."
+                rows="4"
+                placeholder="Example: Send webinar follow-up emails to Bangalore leads who have not applied yet. Or: Initiate a refund of INR 15000 for s102 and notify the learner."
               ></textarea>
             </label>
 
-            <div class="form-actions">
-              <button type="submit" id="submit-button">Create live task</button>
-              <p class="status-message" id="status-message">Ready to intake new company work.</p>
+            <div class="form-actions hero-submit-row">
+              <button type="submit" id="submit-button">Submit</button>
+              <p class="status-message" id="status-message">Ready for the next founder request.</p>
             </div>
           </form>
         </section>
 
-        <section class="panel departments-panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">Workload</p>
-              <h2>Department load right now</h2>
-            </div>
+        <section class="panel assignment-stage">
+          <div class="section-heading center-heading">
+            <p class="panel-label">Routing</p>
+            <h2>Assigning to the right team</h2>
           </div>
-          <div id="department-grid" class="department-grid"></div>
+
+          <div class="assignment-grid">
+            <article class="assignment-card muted-card" id="assignment-context">
+              <p class="assignment-label">CEO Router</p>
+              <h3 id="assignment-context-title">Waiting for a request</h3>
+              <p id="assignment-context-copy">The CEO will read the founder request and decide which team should own it.</p>
+            </article>
+
+            <article class="assignment-card assignment-card-active">
+              <div class="agent-avatar">AI</div>
+              <p class="assignment-label">Active Team</p>
+              <h3 id="assignment-team-name">No team assigned yet</h3>
+              <p id="assignment-team-copy">Submit a task to see the right team pick it up.</p>
+            </article>
+
+            <article class="assignment-card muted-card" id="assignment-next">
+              <p class="assignment-label">Next Action</p>
+              <h3 id="assignment-next-title">No action yet</h3>
+              <p id="assignment-next-copy">Once a team starts working, this card will explain what the system is doing.</p>
+            </article>
+          </div>
+
+          <div class="progress-stage">
+            <p class="panel-label center-label">Processing request</p>
+            <div class="stage-track" id="progress-steps"></div>
+          </div>
         </section>
 
-        <section class="panel taskboard-panel">
+        <section class="panel open-requests-stage">
           <div class="panel-header">
             <div>
-              <p class="panel-label">Task Board</p>
-              <h2>Live task movement</h2>
+              <p class="panel-label">Live Queue</p>
+              <h2>Open requests only</h2>
             </div>
+            <a class="button-link secondary-link" href="/completed">Completed Requests</a>
           </div>
-          <div id="task-columns" class="task-columns"></div>
+          <div id="open-task-list" class="open-task-list"></div>
         </section>
 
-        <section class="panel detail-panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">Selected Task</p>
-              <h2 id="detail-title">Choose a task to inspect its workflow</h2>
-            </div>
-            <span class="department-badge" id="detail-department">No task selected</span>
+        <section class="panel output-stage">
+          <div class="section-heading center-heading">
+            <p class="panel-label">Output</p>
+            <h2>Generating the final result</h2>
           </div>
 
-          <div class="detail-grid">
-            <div class="detail-card">
-              <p class="summary-label">CEO routing reason</p>
-              <p class="summary-text" id="detail-reason">Click any task card to inspect the live event stream.</p>
-            </div>
-            <div class="detail-card">
-              <p class="summary-label">Database effect</p>
-              <p class="summary-text" id="detail-effect">No database change yet.</p>
-            </div>
-            <div class="detail-card">
-              <p class="summary-label">Result / error</p>
-              <pre class="result-output compact" id="detail-result">No result yet.</pre>
-            </div>
-          </div>
+          <div class="output-grid">
+            <article class="output-card">
+              <div class="panel-header">
+                <div>
+                  <p class="panel-label">Selected Request</p>
+                  <h3 id="detail-title">Choose an open task</h3>
+                </div>
+                <span class="department-badge" id="detail-department">No task selected</span>
+              </div>
 
-          <div class="detail-actions" id="detail-actions"></div>
-          <div class="event-list" id="event-list"></div>
-        </section>
+              <div class="detail-grid simplified-detail-grid">
+                <div class="detail-card">
+                  <p class="summary-label">CEO routing reason</p>
+                  <p class="summary-text" id="detail-reason">The CEO reasoning will appear here.</p>
+                </div>
+                <div class="detail-card">
+                  <p class="summary-label">Database effect</p>
+                  <p class="summary-text" id="detail-effect">Any actual record changes will appear here.</p>
+                </div>
+              </div>
 
-        <section class="panel activity-panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">Activity Feed</p>
-              <h2>Latest events across the company</h2>
-            </div>
-          </div>
-          <div id="activity-list" class="activity-list"></div>
-        </section>
+              <div class="result-panel">
+                <p class="summary-label">Result / error</p>
+                <pre class="result-output compact" id="detail-result">No result yet.</pre>
+              </div>
 
-        <section class="panel activity-panel">
-          <div class="panel-header">
-            <div>
-              <p class="panel-label">Operational Artifacts</p>
-              <h2>Emails and refunds created by the system</h2>
-            </div>
-          </div>
-          <div class="record-grid">
-            <div class="record-panel">
-              <h3 class="subheading">Email Outbox</h3>
-              <div id="records-emails" class="record-list"></div>
-            </div>
-            <div class="record-panel">
-              <h3 class="subheading">Refund Ledger</h3>
-              <div id="records-refunds" class="record-list"></div>
-            </div>
+              <div class="detail-actions" id="detail-actions"></div>
+            </article>
+
+            <article class="output-card">
+              <div class="panel-header">
+                <div>
+                  <p class="panel-label">Workflow Log</p>
+                  <h3>Step-by-step events</h3>
+                </div>
+              </div>
+              <div class="event-list compact-event-list" id="event-list"></div>
+            </article>
           </div>
         </section>
       </main>
