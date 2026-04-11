@@ -237,7 +237,22 @@ class OperationalPlaybooks:
         """Strip markdown-like noise and compress the AI response into one readable sentence."""
         cleaned = re.sub(r"[*#`_>-]+", " ", ai_response or "")
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        return cleaned[:240] if cleaned else fallback
+        lowered = cleaned.lower()
+        internal_markers = (
+            "the practical automation completed using the deterministic workflow",
+            "language model response was unavailable",
+            "llm request failed",
+            "unexpected error while calling the language model",
+            "openrouter api key not found",
+            "openrouter rejected the api key",
+            "configured openrouter model endpoint was not found",
+            "openrouter rate-limited the request",
+            "401 client error",
+            "404 client error",
+        )
+        if not cleaned or any(marker in lowered for marker in internal_markers):
+            return fallback
+        return cleaned[:240]
 
     def _detect_request_theme(self, department: str, task_request: str) -> str:
         lowered = task_request.lower()
