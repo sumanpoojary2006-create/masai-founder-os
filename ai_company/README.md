@@ -190,29 +190,31 @@ AI_COMPANY_PORT=8001 python webapp.py
 - `AI_COMPANY_PORT`: server port, defaults to `8000`
 - `AI_COMPANY_DB_PATH`: SQLite database path, defaults to `masai_founder_os.db`
 - `AI_COMPANY_WORKFLOW_DELAY`: optional UI/demo pacing for workflow transitions
-- `EMAIL_PROVIDER`: set to `resend` or leave empty for SMTP fallback
+- `EMAIL_PROVIDER`: set to `brevo`, `resend`, or `smtp`
+- `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`: recommended free setup for cloud deployment when SMTP ports are blocked
 - `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_FROM_NAME`: recommended way to send real emails with Resend
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`: optional SMTP fallback for real email delivery
 
 ## Recommended Real Email Setup
 
-The easiest free provider for this project is Resend.
+The easiest free provider for this project on Render free is Brevo's HTTPS API.
 
 What you need:
 
-1. A Resend account
-2. A Resend API key
-3. A verified sending domain
-4. A sender address on that domain, such as `admissions@yourdomain.com`
+1. A Brevo account
+2. A Brevo API key
+3. A verified sender email, which can be a Gmail address you control
+4. `EMAIL_PROVIDER=brevo` in your environment
 
-Important Resend notes:
+Why Brevo is the better default here:
 
-- The free plan currently includes 3,000 emails/month with a daily limit of 100.
-- Resend's `resend.dev` domain is only for testing and can only send to your own email address.
-- To send real emails to students, you must verify your own domain first.
+- Render free services commonly cannot use outbound SMTP reliably.
+- Brevo sends over HTTPS, so it avoids blocked SMTP ports.
+- You can verify a sender address by email, which is simpler than DNS/domain setup for demos.
 
 Official docs:
 
+- [Create email sender](https://developers.brevo.com/reference/createsender)
 - [Resend pricing](https://resend.com/pricing)
 - [Send Email API](https://resend.com/docs/api-reference/emails)
 - [403 error using resend.dev](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain)

@@ -13,6 +13,10 @@ import requests
 try:
     from ai_company.config import (
         EMAIL_PROVIDER,
+        BREVO_API_KEY,
+        BREVO_API_URL,
+        BREVO_FROM_EMAIL,
+        BREVO_FROM_NAME,
         REQUEST_TIMEOUT,
         RESEND_API_KEY,
         RESEND_API_URL,
@@ -30,6 +34,10 @@ try:
 except ImportError:
     from config import (
         EMAIL_PROVIDER,
+        BREVO_API_KEY,
+        BREVO_API_URL,
+        BREVO_FROM_EMAIL,
+        BREVO_FROM_NAME,
         REQUEST_TIMEOUT,
         RESEND_API_KEY,
         RESEND_API_URL,
@@ -51,6 +59,10 @@ class EmailService:
 
     def __init__(self) -> None:
         self.provider = EMAIL_PROVIDER.strip().lower()
+        self.brevo_api_key = BREVO_API_KEY
+        self.brevo_api_url = BREVO_API_URL
+        self.brevo_from_email = BREVO_FROM_EMAIL
+        self.brevo_from_name = BREVO_FROM_NAME
         self.resend_api_key = RESEND_API_KEY
         self.resend_api_url = RESEND_API_URL
         self.resend_from_email = RESEND_FROM_EMAIL
@@ -67,6 +79,8 @@ class EmailService:
     @property
     def configured(self) -> bool:
         """Whether the service has enough configuration to attempt delivery."""
+        if self.provider == "brevo":
+            return bool(self.brevo_api_key and self.brevo_from_email)
         if self.provider == "resend":
             return bool(self.resend_api_key and self.resend_from_email)
         if self.provider == "smtp":
@@ -81,6 +95,9 @@ class EmailService:
                 "delivery_note": "No email provider is configured. Email stored in outbox only.",
                 "sent_at": "",
             }
+
+        if self.provider == "brevo":
+            return self._deliver_via_brevo(recipient_email, subject, body, html_body)
 
         if self.provider == "resend":
             return self._deliver_via_resend(recipient_email, subject, body, html_body)
@@ -113,6 +130,54 @@ class EmailService:
             return {
                 "status": "failed",
                 "delivery_note": f"SMTP delivery failed: {exc}",
+                "sent_at": "",
+            }
+
+    def _deliver_via_brevo(self, recipient_email: str, subject: str, body: str, html_body: str = "") -> Dict[str, str]:
+        """Send an email through Brevo's transactional email API."""
+        try:
+            response = requests.post(
+                self.brevo_api_url,
+                headers={
+                    "api-key": self.brevo_api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json={
+                    "sender": {
+                        "name": self.brevo_from_name,
+                        "email": self.brevo_from_email,
+                    },
+                    "to": [{"email": recipient_email}],
+                    "subject": subject,
+                    "textContent": body,
+                    "htmlContent": html_body or "<br>".join(body.splitlines()),
+                },
+                timeout=REQUEST_TIMEOUT,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return {
+                "status": "sent",
+                "delivery_note": (
+                    "Email delivered through Brevo. "
+                    f"Message id: {payload.get('messageId', '') or payload.get('message-id', '')}"
+                ).strip(),
+                "sent_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            }
+        except requests.RequestException as exc:
+            detail = ""
+            if getattr(exc, "response", None) is not None:
+                try:
+                    detail = exc.response.text
+                except Exception:
+                    detail = ""
+            message = f"Brevo delivery failed: {exc}"
+            if detail:
+                message = f"{message} | {detail[:220]}"
+            return {
+                "status": "failed",
+                "delivery_note": message,
                 "sent_at": "",
             }
 
