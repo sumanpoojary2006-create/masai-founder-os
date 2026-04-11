@@ -69,7 +69,9 @@ class EmailService:
         """Whether the service has enough configuration to attempt delivery."""
         if self.provider == "resend":
             return bool(self.resend_api_key and self.resend_from_email)
-        return bool(self.host and self.from_email)
+        if self.provider == "smtp":
+            return bool(self.host and self.from_email and self.username and self.password)
+        return False
 
     def deliver(self, recipient_email: str, subject: str, body: str, html_body: str = "") -> Dict[str, str]:
         """Deliver or queue one email."""
@@ -78,7 +80,7 @@ class EmailService:
                 "status": "queued",
                 "delivery_note": "No email provider is configured. Email stored in outbox only.",
                 "sent_at": "",
-        }
+            }
 
         if self.provider == "resend":
             return self._deliver_via_resend(recipient_email, subject, body, html_body)

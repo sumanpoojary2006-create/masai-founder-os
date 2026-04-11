@@ -822,7 +822,7 @@ class Database:
             ),
             "emails": self._fetchall(
                 """
-                SELECT recipient_email, subject, status, department, created_at, sent_at
+                SELECT recipient_name, recipient_email, subject, status, department, delivery_note, created_at, sent_at
                 FROM email_outbox
                 ORDER BY id DESC
                 LIMIT 8

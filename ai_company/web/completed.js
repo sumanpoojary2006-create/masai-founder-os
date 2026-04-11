@@ -79,6 +79,35 @@ function renderCompletedTasks(tasks) {
             <p class="summary-label">Result</p>
             <pre class="result-output compact">${escapeHtml(task.result || task.error || "No result recorded.")}</pre>
           </div>
+          <div class="detail-card completed-events-card">
+            <p class="summary-label">Workflow highlights</p>
+            <div class="completed-event-list">
+              ${renderCompletedEvents(task.events || [])}
+            </div>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
+function renderCompletedEvents(events) {
+  if (!events.length) {
+    return `<p class="summary-text">No workflow events recorded.</p>`;
+  }
+
+  return [...events]
+    .slice(-4)
+    .reverse()
+    .map(
+      (event) => `
+        <article class="completed-event-item">
+          <div class="card-row">
+            <strong>${escapeHtml(event.actor || "System")}</strong>
+            <span class="status-pill" data-status="${escapeHtml(event.stage || "event")}">${escapeHtml((event.stage || "event").replaceAll("_", " "))}</span>
+          </div>
+          <p class="meta-text">${escapeHtml(event.timestamp || "")}</p>
+          <p class="summary-text">${escapeHtml(event.message || "")}</p>
         </article>
       `
     )

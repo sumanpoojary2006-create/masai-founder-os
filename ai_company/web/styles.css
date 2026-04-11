@@ -933,6 +933,22 @@ button:disabled {
   margin-top: 14px;
 }
 
+.completed-events-card {
+  margin-top: 14px;
+}
+
+.completed-event-list {
+  display: grid;
+  gap: 10px;
+}
+
+.completed-event-item {
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(247, 244, 238, 0.9);
+}
+
 @media (max-width: 1180px) {
   .hero,
   .dashboard,

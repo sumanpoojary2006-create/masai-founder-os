@@ -113,10 +113,17 @@ class OperationalPlaybooks:
         return ""
 
     def _extract_amount(self, task_request: str) -> Optional[int]:
-        match = re.search(r"(?:rs\.?|inr|₹)?\s*([0-9][0-9,]{2,})", task_request, re.IGNORECASE)
-        if not match:
+        candidates = []
+        for match in re.finditer(r"(?:rs\.?|inr|₹)?\s*([0-9][0-9,]{2,})", task_request, re.IGNORECASE):
+            value = match.group(1).replace(",", "")
+            start_index = match.start(1)
+            prefix = task_request[max(0, start_index - 1) : start_index].lower()
+            if prefix == "s":
+                continue
+            candidates.append(int(value))
+        if not candidates:
             return None
-        return int(match.group(1).replace(",", ""))
+        return max(candidates)
 
     def _clean_ai_summary(self, ai_response: str, fallback: str) -> str:
         """Strip markdown-like noise and compress the AI response into one readable sentence."""
@@ -415,7 +422,7 @@ class OperationalPlaybooks:
         return {
             "summary": (
                 f"Initiated a refund of INR {refund_amount:,} for {student_label} and "
-                f"{'sent' if delivery['status'] == 'sent' else 'queued'} the learner notification email."
+                f"{delivery['status']} the learner notification email."
             ),
             "events": [
                 {
@@ -426,7 +433,10 @@ class OperationalPlaybooks:
                 {
                     "actor": "Email Outbox",
                     "stage": "email_outbox",
-                    "message": f"Refund notification email {delivery['status']} for {student_label} at {candidate['email']}.",
+                    "message": (
+                        f"Refund notification email {delivery['status']} for {student_label} at {candidate['email']}. "
+                        f"{delivery['delivery_note']}"
+                    ).strip(),
                 },
             ],
         }
