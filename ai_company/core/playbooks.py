@@ -69,6 +69,114 @@ class OperationalPlaybooks:
         },
     }
 
+    REQUEST_THEME_LIBRARY = {
+        "onboarding": {
+            "title": "Your next onboarding steps at Masai",
+            "sales_subject": "Your next admissions steps at Masai",
+            "ops_subject": "Your next onboarding steps at Masai",
+            "curriculum_subject": "Your learning onboarding steps at Masai",
+            "accounts_subject": "Your fee and onboarding update from Masai",
+            "tech_subject": "Your platform onboarding update from Masai",
+            "intro": "We have prepared the clearest next steps to help you move forward smoothly.",
+            "bullets": [
+                "Review the next step checklist shared below and complete the first pending item today.",
+                "Keep your student code handy in case you need help from the team.",
+                "Reply to this email if you want a callback or a guided walkthrough.",
+            ],
+            "closing": "We are ready to help you complete the onboarding journey without delays.",
+        },
+        "study_plan": {
+            "title": "Your weekly learning plan from Masai",
+            "sales_subject": "Your learning update from Masai",
+            "ops_subject": "Your learning operations update from Masai",
+            "curriculum_subject": "Your weekly study plan from Masai",
+            "accounts_subject": "Your learner support update from Masai",
+            "tech_subject": "Your learning platform support update from Masai",
+            "intro": "We reviewed your academic context and prepared a focused learning update for you.",
+            "bullets": [
+                "Start with the first recommended module or practice activity today.",
+                "Track your progress and let us know where you need help.",
+                "Reply if you want mentor support, extra practice, or clarification on the plan.",
+            ],
+            "closing": "Stay consistent this week and we will help you keep momentum.",
+        },
+        "payment_reminder": {
+            "title": "Your payment reminder from Masai",
+            "sales_subject": "Your fee reminder from Masai",
+            "ops_subject": "Your fee status update from Masai",
+            "curriculum_subject": "Your learner account update from Masai",
+            "accounts_subject": "Your payment reminder from Masai",
+            "tech_subject": "Your account payment support update from Masai",
+            "intro": "This is a reminder about your pending fee action and the next payment step.",
+            "bullets": [
+                "Please review the pending amount and payment timeline shared by the accounts team.",
+                "Keep your student code ready if you need support with the payment process.",
+                "Reply to this email if you want a payment breakdown or extension discussion.",
+            ],
+            "closing": "Once the payment step is complete, your record will be updated in the system.",
+        },
+        "payment_update": {
+            "title": "Your account update from Masai",
+            "sales_subject": "Your admissions payment update from Masai",
+            "ops_subject": "Your account status update from Masai",
+            "curriculum_subject": "Your learner account update from Masai",
+            "accounts_subject": "Your payment update from Masai",
+            "tech_subject": "Your payment support update from Masai",
+            "intro": "We reviewed your account and are sharing the latest payment-related update.",
+            "bullets": [
+                "Review the account update and note the next action, if any.",
+                "Keep this email for reference if you need to reach back to the team.",
+                "Reply if you want a detailed fee statement or reconciliation note.",
+            ],
+            "closing": "We will keep the account record updated as soon as the next action is completed.",
+        },
+        "bug_fix": {
+            "title": "Platform update: your issue has been addressed",
+            "sales_subject": "Your student experience update from Masai",
+            "ops_subject": "Your operational issue update from Masai",
+            "curriculum_subject": "Your learning platform update from Masai",
+            "accounts_subject": "Your account issue update from Masai",
+            "tech_subject": "Platform update: your issue has been addressed",
+            "intro": "We reviewed the reported platform issue and are sharing the latest update with you.",
+            "bullets": [
+                "Please retry the affected flow and confirm whether it works as expected now.",
+                "Keep a screenshot ready if the issue still appears.",
+                "Reply to this email if you need a manual check from the product or tech team.",
+            ],
+            "closing": "Thank you for reporting the issue and helping us improve the product experience.",
+        },
+        "follow_up": {
+            "title": "Your next step with Masai",
+            "sales_subject": "Your next step with Masai",
+            "ops_subject": "Your next coordination step with Masai",
+            "curriculum_subject": "Your next learning step with Masai",
+            "accounts_subject": "Your next account step with Masai",
+            "tech_subject": "Your next product support step with Masai",
+            "intro": "We reviewed your current context and are sharing the best next step from our side.",
+            "bullets": [
+                "Review the recommendation below and take the first action that applies to you.",
+                "Reply if you want a counselor, ops, or support callback.",
+                "We can help you move this forward with one guided next step.",
+            ],
+            "closing": "If you reply to this email, the right team will continue the conversation with you.",
+        },
+        "default": {
+            "title": "An update from Masai",
+            "sales_subject": "An admissions update from Masai",
+            "ops_subject": "An operations update from Masai",
+            "curriculum_subject": "A learning update from Masai",
+            "accounts_subject": "An accounts update from Masai",
+            "tech_subject": "A platform update from Masai",
+            "intro": "We reviewed your request and are sharing the latest update from the team.",
+            "bullets": [
+                "Review the update below for the recommended next action.",
+                "Keep this email for reference while the task moves forward.",
+                "Reply if you want the team to continue the conversation with you.",
+            ],
+            "closing": "We will keep supporting you until the request is fully handled.",
+        },
+    }
+
     def __init__(self, db: Database, email_service: Optional[EmailService] = None) -> None:
         self.db = db
         self.email_service = email_service or EmailService()
@@ -131,6 +239,97 @@ class OperationalPlaybooks:
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned[:240] if cleaned else fallback
 
+    def _detect_request_theme(self, department: str, task_request: str) -> str:
+        lowered = task_request.lower()
+        if "refund" in lowered:
+            return "refund"
+        if any(word in lowered for word in ("onboarding", "orientation", "cohort", "next cohort", "start date")):
+            return "onboarding"
+        if any(word in lowered for word in ("study", "resource", "learning", "module", "curriculum", "practice", "milestone")):
+            return "study_plan"
+        if any(word in lowered for word in ("reminder", "due", "balance")) and any(
+            word in lowered for word in ("fee", "payment", "invoice")
+        ):
+            return "payment_reminder"
+        if any(word in lowered for word in ("payment update", "fee update", "account update")):
+            return "payment_update"
+        if any(word in lowered for word in ("fixed", "resolved", "issue", "bug", "dashboard", "login", "platform")):
+            return "bug_fix"
+        if any(word in lowered for word in ("follow-up", "follow up", "next step", "reach out", "counselor", "admissions")):
+            return "follow_up"
+        if department == "sales":
+            return "follow_up"
+        return "default"
+
+    def _build_request_email_plan(
+        self,
+        department: str,
+        task_request: str,
+        target: Dict[str, object],
+        ai_summary: str,
+    ) -> Dict[str, object]:
+        theme = self._detect_request_theme(department, task_request)
+        if theme == "refund":
+            # Refunds use the dedicated playbook below.
+            theme = "default"
+
+        theme_meta = self.REQUEST_THEME_LIBRARY.get(theme, self.REQUEST_THEME_LIBRARY["default"])
+        program = target.get("program") or "your program"
+        student_code = target.get("student_code") or ""
+        name = target.get("name") or "there"
+        label = f"{name} ({student_code})" if student_code else str(name)
+
+        subject = theme_meta.get(f"{department}_subject") or theme_meta["title"]
+        if theme == "onboarding":
+            subject = f"{subject} - {program}"
+        elif theme == "study_plan":
+            subject = f"{subject} - {program}"
+        elif theme == "payment_reminder":
+            subject = f"{subject} - {label}"
+        elif theme == "payment_update":
+            subject = f"{subject} - {label}"
+        elif theme == "bug_fix":
+            subject = f"{subject} - {program}"
+        elif theme == "follow_up":
+            subject = f"{subject} - {label}"
+
+        intro = f"{theme_meta['intro']} {ai_summary}".strip()
+        bullets = list(theme_meta["bullets"])
+
+        if theme == "onboarding":
+            bullets[0] = f"Start with the onboarding checklist for {program} and complete the first pending task today."
+            if student_code:
+                bullets[1] = f"Use your student code {student_code} whenever you reach out for support."
+        elif theme == "study_plan":
+            bullets[0] = f"Begin with the next recommended learning task for {program}."
+            if student_code:
+                bullets[1] = f"Share your progress with student code {student_code} if you need mentor support."
+        elif theme == "payment_reminder":
+            bullets[0] = "Please review the pending amount and complete the next payment action before the due date."
+            if student_code:
+                bullets[1] = f"Keep your student code {student_code} ready for payment support."
+        elif theme == "payment_update":
+            bullets[0] = "Please review the updated account note and keep this email for your payment reference."
+            if student_code:
+                bullets[1] = f"Use student code {student_code} if you need a statement or reconciliation copy."
+        elif theme == "bug_fix":
+            bullets[0] = "Please retry the affected flow and let us know whether the issue is fully resolved."
+            if student_code:
+                bullets[1] = f"If the issue continues, reply with your student code {student_code} and a screenshot."
+        elif theme == "follow_up":
+            bullets[0] = f"We prepared the next recommended action for {program}."
+            if student_code:
+                bullets[1] = f"Reply with student code {student_code} if you want a direct callback."
+
+        return {
+            "theme": theme,
+            "subject": subject,
+            "title": theme_meta["title"],
+            "intro": intro,
+            "bullets": bullets,
+            "closing": theme_meta["closing"],
+        }
+
     def _render_email_html(self, title: str, greeting: str, intro: str, bullets: List[str], closing: str, team_name: str) -> str:
         bullet_items = "".join(f"<li>{item}</li>" for item in bullets if item)
         return f"""
@@ -186,24 +385,25 @@ class OperationalPlaybooks:
 
         for target in targets:
             recipient_label = target.get("student_code") or target.get("name") or target.get("email")
-            subject = self._build_generic_subject(department, task_request, target)
-            bullets = meta["bullets"]
+            email_plan = self._build_request_email_plan(department, task_request, target, ai_summary)
+            subject = str(email_plan["subject"])
+            bullets = list(email_plan["bullets"])
             body = (
                 f"Hi {target['name']},\n\n"
-                f"{ai_summary}\n\n"
+                f"{email_plan['intro']}\n\n"
                 "What happens next:\n"
                 f"- {bullets[0]}\n"
                 f"- {bullets[1]}\n"
                 f"- {bullets[2]}\n\n"
-                "If you need help, just reply to this email and the team will follow up.\n\n"
+                f"{email_plan['closing']}\n\n"
                 f"Best,\n{meta['team_name']}"
             )
             html_body = self._render_email_html(
-                title=subject,
+                title=str(email_plan["title"]),
                 greeting=f"Hi {target['name']},",
-                intro=ai_summary,
+                intro=str(email_plan["intro"]),
                 bullets=bullets,
-                closing="If you need help, just reply to this email and the team will follow up.",
+                closing=str(email_plan["closing"]),
                 team_name=meta["team_name"],
             )
             delivery = self.email_service.deliver(target["email"], subject, body, html_body=html_body)
