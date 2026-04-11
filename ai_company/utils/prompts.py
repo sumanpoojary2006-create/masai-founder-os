@@ -20,6 +20,14 @@ Rules:
 - Do not include markdown fences.
 - Choose the single best team.
 - Keep the reason under 25 words.
+- Choose based on business ownership, not just the communication channel.
+- Do not choose accounts only because the founder mentions "email", "message", or "notify".
+- Examples:
+  - onboarding/cohort/orientation -> ops
+  - study plan/modules/learning resources -> curriculum
+  - bugs/dashboard/platform fixes -> tech
+  - webinar/leads/admissions follow-up -> sales
+  - refunds/payments/invoices -> accounts
 
 Output format:
 {{"department": "sales", "reason": "Brief explanation"}}

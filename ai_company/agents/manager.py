@@ -91,15 +91,44 @@ class ManagerAgent:
 
     heuristic_priority = ["accounts", "tech", "curriculum", "sales", "ops"]
 
-    def _infer_department(self, task: str) -> str:
-        """Use simple keywords when the LLM response is unavailable."""
+    def _score_departments(self, task: str) -> dict:
+        """Compute keyword scores for each department."""
         lowered = task.lower()
         scores = {department: 0 for department in self.valid_departments}
-
         for department, keywords in self.heuristic_keywords.items():
             for keyword, weight in keywords.items():
                 if keyword in lowered:
                     scores[department] += weight
+        return scores
+
+    def _strong_signal_department(self, task: str) -> str:
+        """Return a deterministic department for obvious operational workflows."""
+        lowered = task.lower()
+
+        if "refund" in lowered or any(word in lowered for word in ("invoice", "billing", "emi", "payment")):
+            return "accounts"
+
+        if any(word in lowered for word in ("webinar", "lead", "leads", "admission", "admissions", "counselor", "counselling")):
+            return "sales"
+
+        if any(word in lowered for word in ("onboarding", "orientation", "cohort", "batch", "mentor coordination")):
+            return "ops"
+
+        if any(word in lowered for word in ("study plan", "learning resources", "curriculum", "module", "assessment", "syllabus")):
+            return "curriculum"
+
+        if any(word in lowered for word in ("bug", "dashboard", "platform", "login", "issue has been fixed", "deployed", "technical")):
+            return "tech"
+
+        return ""
+
+    def _infer_department(self, task: str) -> str:
+        """Use simple keywords when the LLM response is unavailable."""
+        strong_match = self._strong_signal_department(task)
+        if strong_match:
+            return strong_match
+
+        scores = self._score_departments(task)
 
         best_department = max(
             self.heuristic_priority,
@@ -122,6 +151,14 @@ class ManagerAgent:
 
     def route(self, task: str) -> dict:
         """Return the selected department plus a short routing reason."""
+        strong_match = self._strong_signal_department(task)
+        if strong_match:
+            return {
+                "department": strong_match,
+                "reason": self._fallback_reason(strong_match),
+                "raw_decision": f"heuristic:{strong_match}",
+            }
+
         prompt = manager_prompt(task)
         raw_decision = call_llm(prompt).strip()
 
@@ -142,6 +179,13 @@ class ManagerAgent:
 
         if department not in self.valid_departments:
             department = self._infer_department(task)
+
+        scores = self._score_departments(task)
+        heuristic_department = self._infer_department(task)
+        top_score = scores.get(heuristic_department, 0)
+        llm_score = scores.get(department, 0)
+        if heuristic_department in self.valid_departments and top_score >= max(3, llm_score + 2):
+            department = heuristic_department
 
         if not reason:
             reason = self._fallback_reason(department)
